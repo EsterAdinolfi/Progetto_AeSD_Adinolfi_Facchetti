@@ -15,7 +15,7 @@ plt.rcParams['font.family'] = 'DejaVu Sans'
 ROOT = Path(__file__).resolve().parents[2]
 
 # Default paths (can be overridden by command line args)
-DEFAULT_RESULTS_DIR = ROOT / 'NEW' / 'risultati_auto'
+DEFAULT_RESULTS_DIR = ROOT / 'con_risultati' / 'risultati_auto'
 DEFAULT_JSON = DEFAULT_RESULTS_DIR / 'results.json'
 DEFAULT_TXT = DEFAULT_RESULTS_DIR / 'statistiche_prestazioni.txt'
 
@@ -67,8 +67,8 @@ def load_and_prepare_data(json_path, cpu_metric='total'):
 
 def generate_plots_for_mode(results_dir_name, cpu_metric='total'):
     """Generate plots for a single results directory"""
-    results_json = ROOT / 'NEW' / results_dir_name / 'results.json'
-    stats_txt = ROOT / 'NEW' / results_dir_name / 'statistiche_prestazioni.txt'
+    results_json = ROOT / 'con_risultati' / results_dir_name / 'results.json'
+    stats_txt = ROOT / 'con_risultati' / results_dir_name / 'statistiche_prestazioni.txt'
     
     if not results_json.exists():
         print(f"Errore: file {results_json} non trovato!")
@@ -96,8 +96,8 @@ def generate_plots_for_mode(results_dir_name, cpu_metric='total'):
 
 def generate_comparison_plots(serial_dir_name, parallel_dir_name, cpu_metric='total'):
     """Generate comparison plots between serial and parallel results"""
-    serial_json = ROOT / 'NEW' / serial_dir_name / 'results.json'
-    parallel_json = ROOT / 'NEW' / parallel_dir_name / 'results.json'
+    serial_json = ROOT / 'con_risultati' / serial_dir_name / 'results.json'
+    parallel_json = ROOT / 'con_risultati' / parallel_dir_name / 'results.json'
     
     if not serial_json.exists():
         print(f"Errore: file {serial_json} non trovato!")
@@ -690,8 +690,8 @@ def generate_scatter_comparison_plots(df_serial, df_parallel, prefix, log_scale=
 
 def generate_comparison_plots(serial_dir_name, parallel_dir_name, cpu_metric='total', log_scale=False):
     """Generate comparison plots between serial and parallel results"""
-    serial_json = ROOT / 'NEW' / serial_dir_name / 'results.json'
-    parallel_json = ROOT / 'NEW' / parallel_dir_name / 'results.json'
+    serial_json = ROOT / 'con_risultati' / serial_dir_name / 'results.json'
+    parallel_json = ROOT / 'con_risultati' / parallel_dir_name / 'results.json'
     
     if not serial_json.exists():
         print(f"Errore: file {serial_json} non trovato!")
@@ -889,8 +889,8 @@ def generate_used_plots_only(log_scale=False):
     print("=" * 80)
     
     # Load data
-    serial_json = ROOT / 'NEW' / 'risultati_serial' / 'results.json'
-    auto_json = ROOT / 'NEW' / 'risultati_auto' / 'results.json'
+    serial_json = ROOT / 'con_risultati' / 'risultati_serial' / 'results.json'
+    auto_json = ROOT / 'con_risultati' / 'risultati_auto' / 'results.json'
     
     if not serial_json.exists() or not auto_json.exists():
         print("Errore: file JSON non trovati!")
@@ -1061,8 +1061,8 @@ if __name__ == "__main__":
             generate_plots_for_mode('risultati_auto', metric) 
             generate_comparison_plots('risultati_serial', 'risultati_auto', metric, log_scale=args.log_scale)
             # Also generate scatter plots for comparison
-            serial_json = ROOT / 'NEW' / 'risultati_serial' / 'results.json'
-            auto_json = ROOT / 'NEW' / 'risultati_auto' / 'results.json'
+            serial_json = ROOT / 'con_risultati' / 'risultati_serial' / 'results.json'
+            auto_json = ROOT / 'con_risultati' / 'risultati_auto' / 'results.json'
             if serial_json.exists() and auto_json.exists():
                 df_serial = load_and_prepare_data(serial_json, metric)
                 df_auto = load_and_prepare_data(auto_json, metric)
