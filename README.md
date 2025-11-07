@@ -1,4 +1,4 @@
-# Progetto Algoritmi e Strutture Dati
+# Progetto algoritmi e strutture dati
 
 Progetto per il corso di Algoritmi e Strutture Dati - Implementazione di algoritmi per il calcolo del Minimal Hitting Set (MHS).
 
@@ -11,7 +11,7 @@ Progetto per il corso di Algoritmi e Strutture Dati - Implementazione di algorit
 
 Questo progetto implementa algoritmi per il calcolo del Minimal Hitting Set su matrici binarie, con particolare attenzione alle prestazioni e all'ottimizzazione. Sono state sviluppate due versioni dell'algoritmo (seriale e parallela) e condotte analisi sperimentali approfondite sui risultati ottenuti.
 
-## Struttura del Progetto
+## Struttura del progetto
 
 ### `con_risultati/`
 
@@ -66,7 +66,7 @@ pip install numpy pandas matplotlib seaborn
 
 ## Esecuzione
 
-### Interfaccia Testuale (Consigliato)
+### Interfaccia testuale (consigliato)
 
 Il progetto include un'interfaccia testuale interattiva che permette di accedere a tutte le funzionalità in modo guidato.
 
@@ -84,7 +84,7 @@ L'interfaccia permette di:
 
 L'interfaccia include anche un help, raggiungibile tramite il menu principale.
 
-### Esecuzione Diretta
+### Esecuzione diretta
 
 Per maggiori dettagli sui comandi disponibili e le opzioni di esecuzione avanzate, è possibile consultare la relazione nella cartella `relazione/`.
 
