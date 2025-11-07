@@ -1,0 +1,33 @@
+;;; MHS generati dal solver mhs_solver.py
+;;;
+;;; Matrice di input:
+;;; |N| (righe) = 1
+;;; |M| (colonne) = 20
+;;; Origine: benchmarks1
+;;; Densita: 0.0500
+;;; Categoria: trivial
+;;; Matrice ridotta |M'| (colonne non vuote) = 1
+;;; Indici delle colonne vuote rimosse (a partire da 0): [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+;;; Livello massimo di esplorazione = 1
+;;;
+;;; Numero di MHS trovati = 1
+;;; Cardinalita' minima = 1, Cardinalita' massima = 1
+;;; Completato? True
+;;; Timeout imposto = 300 secondi
+;;;
+;;; Numero ipotesi generate per livello:
+;;;   Livello 0: 1
+;;;   Livello 1: 0
+;;;
+;;; MHS trovati per livello:
+;;;   Livello 1: 1 MHS
+;;;   Totale: 1 MHS
+;;;
+;;; Prestazioni:
+;;;   Tempo reale = 0.0043 s
+;;;   CPU time totale = 0.0000 s
+;;;     CPU time singoli worker: non presente (esecuzione seriale)
+;;;   Memoria RSS = 20176.0 KB
+;;;   Picco memoria = 19.0 KB
+;;;
+0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0

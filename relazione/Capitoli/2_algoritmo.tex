@@ -1,0 +1,426 @@
+﻿\documentclass[../relazione.tex]{subfiles}
+\begin{document}
+\cleardoublepage
+\chapter{Algoritmi Implementati}
+\label{cap: algoritmo}
+
+In questo capitolo vengono descritti i due algoritmi implementati per il calcolo dei Minimal Hitting Set:
+la versione seriale e la versione parallela. Entrambi seguono un approccio BFS (Breadth-First Search)
+per esplorare lo spazio delle ipotesi, ma differiscono nelle strutture dati utilizzate e nelle
+ottimizzazioni adottate per gestire matrici di diverse dimensioni.
+
+\section{Spazio di ricerca e rappresentazione delle ipotesi}
+
+Lo spazio di ricerca è costituito da tutti i possibili sottoinsiemi di colonne della matrice: quindi, date $M'$ colonne non vuote dopo la riduzione, lo spazio ha dimensione $2^{M'}$.
+
+Ogni sottoinsieme viene chiamato \emph{ipotesi} e rappresenta un potenziale hitting set.
+
+Per gestire efficientemente questa esplorazione, ogni ipotesi è rappresentata mediante una
+struttura compatta che utilizza operazioni bitwise. La classe \path{Hypothesis} definita
+in \path{utility.py} contiene quattro campi:
+
+\begin{itemize}
+    \item \textbf{\path{bin}} (intero): codifica le colonne presenti nell'ipotesi tramite un
+          bitmask. Il bit in posizione $i$ è 1 se la colonna $i$-esima appartiene all'ipotesi. Ad esempio,
+          se l'ipotesi contiene le colonne $\{0, 2, 4\}$ in una matrice con 5 colonne, allora
+          $\texttt{bin} = 10101_2 = 21_{10}$. È stato scelto il tipo \path{int} poiché supporta operazioni bitwise efficienti (come OR e shift) e può rappresentare bitmask di qualsiasi lunghezza grazie alla sua natura arbitrariamente grande, evitando limiti di dimensione. Nell'esempio, la rappresentazione binaria (\(10101_2\)) mostra visivamente il bitmask, mentre quella decimale (\(21_{10}\)) corrisponde al valore intero utilizzato direttamente nel codice Python;
+
+    \item \textbf{\path{vector}} (intero): bitmask che indica quali righe sono coperte
+          dall'ipotesi. Il bit in posizione $i$ è 1 se almeno una colonna dell'ipotesi contiene un 1
+          nella riga $i$-esima. Anche in questo caso, è stata scelta la rappresentazione intera per efficienza e flessibilità. Ad esempio, nell'ipotesi $\{0, 2, 4\}$, se le colonne coprono le righe 0, 1 e 3 su 4 righe totali, allora $\texttt{vector} = 1101_2 = 13_{10}$;
+
+    \item \textbf{\path{card}} (intero): cardinalità dell'ipotesi, cioè il numero di colonne
+          presenti. Viene precomputato tramite \path{bin.bit_count()} per evitare calcoli ripetuti. Anche in questo caso, è stata scelta la rappresentazione intera per efficienza e flessibilità. Ad esempio, per l'ipotesi $\{0, 2, 4\}$, $\texttt{card} = 3$;
+
+    \item \textbf{\path{num_cols}} (intero): numero totale di colonne nella matrice ridotta, necessario per alcune operazioni di manipolazione e, insieme al numero di righe $N$, come upper bound nell'esplorazione dei livelli di ipotesi $(\texttt{max\_level}=\max (N, \texttt{num\_cols}))$. Anche in questo caso, è stata scelta la rappresentazione intera per efficienza e flessibilità. Ad esempio, nella matrice con 5 colonne, $\texttt{num\_cols} = 5$.
+\end{itemize}
+
+Questa rappresentazione permette operazioni molto efficienti:
+\begin{itemize}
+    \item \textbf{Verifica di copertura}: controllare in tempo costante se un'ipotesi copre tutte le righe significa
+          verificare se $\texttt{vector} = 2^{N} - 1$, con $N$ numero di righe. Questa condizione corrisponde ad avere tutti i bit di \path{vector} a 1;
+
+    \item \textbf{Estensione di un'ipotesi}: secondo il teorema succL, un'ipotesi viene estesa aumentando la cardinalità di 1, cioè il successore aggiunge una nuova colonna \(i\) all'insieme dell'ipotesi genitore. La colonna \(i\) è scelta solo se corrisponde a un bit che passa da 0 a 1 e questo bit deve essere a sinistra del bit più significativo dell'ipotesi corrente (operazione di shift). Per fare ciò, si aggiorna \path{bin} con $\texttt{bin}' = \texttt{bin} \mid (1 \ll i)$ (shift) e \path{vector} con $\texttt{vector}' = \texttt{vector} \mid \texttt{col\_vectors}[i]$ (estensione dell'ipotesi).
+
+
+    \item \textbf{Confronto e ordinamento}: immediato, confrontando i campi interi.
+\end{itemize}
+
+\section{Algoritmo seriale (\texttt{mhs\_solver.py})}
+
+L'algoritmo seriale è progettato per matrici di piccole e medie dimensioni. Segue un approccio
+BFS classico, esplorando le ipotesi livello per livello in ordine di cardinalità crescente.
+
+\subsection{Flusso di esecuzione}
+
+L'algoritmo si articola nelle seguenti fasi:
+
+\begin{enumerate}
+    \item \textbf{Parsing e pre-processamento}:
+          \begin{itemize}
+              \item Lettura del file \path{.matrix};
+              \item Rimozione delle colonne completamente vuote. Ciò è opzionale: anche se sconsigliato, si può evitare con l'opzione \path{--no-reduction}. Questa opzione è disponibile anche nel menu interattivo nelle impostazioni avanzate (Capitolo \ref{cap: interfaccia});
+              \item Costruzione del vettore \path{col_map} che mappa gli indici ridotti agli originali;
+              \item Conversione di ogni colonna in un bitmask intero tramite il metodo \path{get_column_vectors()};
+              \item Determinazione del \textbf{livello massimo di esplorazione}: viene calcolato come $\max(N, M')$, dove $N$ è il numero di righe e $M'$ è il numero di colonne non-vuote. Questo limite è indipendente dall'opzione \path{--no-reduction}: anche se l'utente sceglie di mantenere le colonne vuote nella matrice elaborata, il limite di esplorazione si basa solo sulle colonne che effettivamente contribuiscono agli MHS, cioè quelle non-vuote, poiché le colonne vuote non possono mai far parte di una soluzione.
+          \end{itemize}
+
+    \item \textbf{Inizializzazione}:
+          \begin{itemize}
+              \item Creazione della variabile globale \textbf{\path{last_saved_state}}. Questa salva periodicamente lo stato corrente dell'esplorazione (MHS trovati, livello raggiunto, statistiche per livello e distribuzione MHS per cardinalità) per consentire il recupero in caso di interruzioni impreviste (timeout, interruzione utente o esaurimento memoria). È una tupla aggiornata a ogni livello BFS completato, garantendo la possibilità di scrivere un file di output parziale consistente anche dopo un'interruzione;
+              \item Creazione dell'ipotesi vuota (livello 0) con \path{bin}=0, \path{vector}=0, \path{card}=0;
+              \item Inizializzazione delle strutture dati:
+                    \begin{itemize}
+                        \item \textbf{\path{found_mhs}}: \path{lista} degli MHS trovati. Una lista semplice permette di accumulare gli MHS in ordine di scoperta, facilitando l'output finale e l'accesso sequenziale. È efficiente per aggiunte frequenti e iterazioni, senza bisogno di ricerche rapide (che non sono richieste qui);
+                        \item \textbf{\path{found_mhs_sets}}: \path{set} di \path{frozenset} per verifiche rapide di minimalità. Un \path{set} di \path{frozenset} è ideale per verifiche rapide di contenimento (\(O(1)\) medio), necessarie per controllare la minimalità (ad esempio, se un nuovo MHS è già contenuto in uno esistente). I \path{frozenset}, rappresentando insiemi immutabili non ordinati di oggetti unici, evitano modifiche accidentali e supportano operazioni di insieme efficienti. Si sono preferiti, quindi, a strutture dati come le \path{tuple}, che pur essendo hashabili e immutabili rappresentano sequenze ordinate, e alle \path{liste}, che non sono hashabili, non possono essere usate direttamente in un \path{set} e permettono duplicati. I \path{frozenset} sono più adatti per rappresentare insiemi di colonne in un MHS, dove l'ordine non conta (essendo ogni colonna rappresentata da un numero intero univoco) e non sono ammessi duplicati;
+                        \item \textbf{\path{stats_per_level}}: dizionario per statistiche di esplorazione. Un dizionario chiave-valore permette aggiornamenti rapidi e accessi per livello. È adatto a raccogliere metriche, come il numero di ipotesi esplorate. È flessibile e non richiede un ordine specifico;
+                        \item \textbf{\path{mhs_per_level}}: dizionario che traccia il numero di MHS trovati per ogni cardinalità. Quando un'ipotesi viene identificata come MHS, la sua cardinalità effettiva (campo \path{card}) viene utilizzata come chiave per incrementare il contatore corrispondente. Questo permette di calcolare la cardinalità minima e massima degli MHS nel file di output.
+                    \end{itemize}
+              \item Calcolo di \textbf{\path{all_rows_mask}} $= 2^N - 1$ per verifiche di copertura. \\Questo bitmask pre-calcolato rappresenta tutte le righe coperte (tutti i bit a 1), abilitando verifiche di copertura istantanee con confronti bitwise (con complessità temporale pari a $O(1)$) tra \path{vector} e \path{all_rows_mask}, invece di iterare sulle righe (complessità temporale pari a $O(N)$). \\Ad esempio, se $N=4$, $\texttt{all\_rows\_mask} = 15_{10}=1111_2$. Se $\texttt{vector} = 13_{10}=1101_2$, le righe $\{0,2,3\}$ sono coperte (bit 0, 2 e 3 sono impostati a 1), ma la riga 1 non lo è (bit 1 è 0), quindi l'ipotesi non è completa. Se invece $\texttt{vector} = 15_{10}=1111_2$, tutte le righe sono coperte e l'ipotesi è una soluzione valida.
+
+          \end{itemize}
+    \item \textbf{Esplorazione BFS}:
+
+          Per ogni livello $k$ (da 0 fino al livello massimo calcolato, cioè fino a $\max(N, M')$ dove $M'$ è il numero di colonne non-vuote):
+          \begin{itemize}
+              \item Le ipotesi del livello corrente (provenienti dal livello $k-1$, già ordinate canonicamente) vengono processate in ordine;
+
+              \item Per ogni ipotesi $H$ del livello corrente (in ordine):
+                    \begin{enumerate}
+                        \item \textbf{Verifica copertura}: se $\texttt{vector} = \texttt{all\_rows\_mask}$,
+                              allora $H$ copre tutte le righe ed è un MHS;
+
+                        \item \textbf{Aggiunta MHS}: se $H$ è una soluzione (copre tutte le righe), viene aggiunta direttamente a \path{found_mhs} e \path{found_mhs_sets} dopo una conversione degli indici da ridotti a originali tramite \path{col_map}. Infine, l'MHS viene registrato nel dizionario \path{mhs_per_level} usando la sua cardinalità effettiva (\path{card}) come chiave.
+
+                              La \textbf{minimalità è garantita per costruzione} dall'algoritmo BFS combinato con la potatura, senza necessità di controlli espliciti:
+                              \begin{itemize}
+                                  \item \textbf{Livello 1 (singoletti)}: ogni MHS è automaticamente minimale (cardinalità minima possibile);
+                                  \item \textbf{Livelli $k \geq 2$}: la minimalità è garantita da:
+                                        \begin{itemize}
+                                            \item BFS esplora per cardinalità crescente: ogni MHS di cardinalità $k$ viene trovato prima di qualsiasi MHS di cardinalità $k' > k$;
+                                            \item Gli MHS non generano figli (condizione ``\texttt{if not is\_mhs}'' nella generazione successori);
+                                            \item La potatura durante la generazione figli scarta automaticamente ipotesi contenenti MHS come sottoinsiemi;
+                                            \item Il teorema succL garantisce che ogni ipotesi sia generata esattamente una volta dal suo predecessore più a destra.
+                                        \end{itemize}
+                              \end{itemize}
+                              Quindi, se un'ipotesi $H$ del livello $k \geq 2$ è soluzione, è \textbf{certamente minimale}: non può contenere MHS più piccoli (con cardinalità $< k$) perché la potatura avrebbe impedito la sua creazione.
+
+                        \item \textbf{Generazione figli}: genera i successori immediati $\text{succL}(H)$ \emph{solo se $H$ non è MHS} (come da specifica, per potare lo spazio di ricerca). La generazione implementa il teorema \path{succL}: per un'ipotesi $H$, i suoi successori $H'$ appartenenti a $\text{succL}(H)$ vengono generati complementando (impostando a 1) i soli bit 0 che si trovano a sinistra del bit 1 più significativo di $H$.
+
+                              Questo approccio, combinato con l'ordinamento canonico del livello, garantisce che ogni ipotesi figlia venga generata esattamente una volta dal suo unico predecessore "più a destra" (quello con $\texttt{bin}(h)$ più piccolo).
+                    \end{enumerate}
+              \item \textbf{Ordinamento canonico del livello successivo}: le ipotesi generate vengono ordinate per \path{bin} decrescente ($\texttt{bin}(h_1) > \texttt{bin}(h_2)$) per garantire la regola di precedenza succL, poi si passa al livello successivo;
+              \item L'esplorazione \textbf{termina} quando non ci sono più ipotesi da esplorare.
+          \end{itemize}
+
+    \item \textbf{Finalizzazione}:
+          \begin{itemize}
+              \item Ordinamento degli MHS trovati per cardinalità crescente per una presentazione ordinata dei risultati;
+              \item Calcolo delle prestazioni di esecuzione (tempo CPU e wall-clock) tramite la funzione \path{measure_performance()};
+              \item Scrittura del file \path{.mhs} con i risultati ottenuti, statistiche per livello, distribuzione MHS per cardinalità e metadati (origine, densità, categoria) tramite la funzione \path{write_mhs_output()};
+              \item Stampe di riepilogo a console: percorso del file di output, numero totale di MHS trovati, tempo di esecuzione totale e livello BFS raggiunto;
+              \item Se presenti MHS, visualizzazione della distribuzione per cardinalità (numero di MHS per ogni livello di cardinalità);
+              \item Indicazione dello stato di completamento dell'algoritmo (completato o interrotto).
+          \end{itemize}
+\end{enumerate}
+
+\subsection{Strutture dati}
+
+L'algoritmo seriale si basa su strutture dati efficienti e scalabili, progettate per gestire l'esplorazione BFS senza eccessivo overhead di memoria o tempo. Oltre alle strutture principali già introdotte nella fase di inizializzazione (\path{found_mhs}, \path{found_mhs_sets} e \path{stats_per_level}), l'implementazione utilizza delle \textbf{liste} per ogni livello: \path{current_level_hypotheses} contiene le ipotesi del livello attualmente in elaborazione, mentre \path{next_level_hypotheses} accumula i successori generati per il livello successivo. Il riferimento a \path{next_level_hypotheses} viene assegnato a \path{current_level_hypotheses} alla fine di ogni iterazione (\textit{passaggio per riferimento}), permettendo un passaggio efficiente tra livelli senza copie aggiuntive. Questa scelta sfrutta la mutabilità delle liste per un'implementazione semplice e performante, evitando strutture più complesse come code dedicate che introdurrebbero overhead inutile.
+
+\subsection{Monitoraggio memoria}
+
+A differenza della versione parallela, dove il monitoraggio del picco di memoria con \path{tracemalloc} è opzionale per motivi di prestazioni, nella versione seriale \path{tracemalloc} è \textbf{sempre attivo} per semplicità implementativa. 
+Questo garantisce che il picco di memoria sia sempre disponibile nei file di output (\path{.mhs} e JSON), fornendo metriche complete senza richiedere configurazioni aggiuntive dall'utente. 
+
+L'opzione \path{--memory-monitoring}, quindi, non è supportata in modalità seriale. L'overhead introdotto da \path{tracemalloc} è accettabile poiché la versione seriale è progettata per istanze di dimensioni più piccole, dove le prestazioni non sono critiche come nella versione parallela. Proprio per questo motivo, la versione seriale non monitora continuamente l'andamento della memoria per interruzioni basate su superamento di soglie.
+L'algoritmo continua l'elaborazione fino a quando il sistema operativo non solleva un'eccezione \path{MemoryError}, che viene catturata per salvare i risultati parziali accumulati. Questo approccio \textbf{reattivo} è possibile grazie alla semplicità del singolo processo/thread, che permette di interrompere e salvare in modo affidabile senza rischi di deadlock o stati inconsistenti.
+
+\section{Algoritmo parallelo (\texttt{mhs\_solver\_parallel.py})}
+
+L'algoritmo parallelo mantiene la stessa logica BFS della versione seriale, ma introduce
+ottimizzazioni e tecniche di parallelizzazione per scalare su matrici grandi e sfruttare
+architetture multi-core.
+
+\subsection{Ordinamento canonico per generazione successori}
+L'algoritmo parallelo, come quello seriale, richiede un \textbf{ordinamento canonico} delle ipotesi per garantire la correttezza del teorema di generazione succL. Questo ordinamento assicura che ogni ipotesi figlia venga generata esattamente una volta dal suo predecessore più a destra.
+
+L'ordinamento viene effettuato una sola volta per livello, alla fine (se richiesta, immediatamente dopo la deduplicazione globale dei risultati ottenuti dai worker). Questo serve a garantire l'ordine nel caso in cui la sincronizzazione dei worker non avvenga in modo perfetto. L'ordinamento segue il criterio \texttt{bin(h1) > bin(h2)} in ordine decrescente (\path{current_level.sort(key=lambda x: x[0], reverse=True)}), garantendo che l'ordine canonico sia rispettato globalmente anche in ambiente parallelo e che ogni worker possa applicare correttamente il teorema succL senza violare le condizioni di unicità.
+
+
+\subsection{Architettura master-worker}
+
+In un algoritmo parallelo non si può semplicemente far girare tutto in un singolo processo, perché Python ha il \textbf{GIL} (\textbf{\textit{Global Interpreter Lock}}) che limita la vera parallelizzazione. Quindi, è necessario usare il modulo \path{multiprocessing} per creare processi separati, ognuno con memoria propria, invece di \path{threading} (limitato dal GIL per operazioni CPU-bound come le nostre) o \path{asyncio} (ottimizzato per I/O-bound, ma non per operazioni CPU-intensive).
+\\L'architettura master-worker divide i compiti:
+\begin{itemize}
+    \item \textbf{Processo master}: coordina l'esplorazione, mantiene lo stato globale (MHS trovati,
+          strutture per pruning), e distribuisce il lavoro ai worker.
+          \\Il master:
+          \begin{itemize}
+              \item \textbf{Inizializza tutto}: crea il pool di worker, imposta strutture dati globali (come \path{found_mhs}, \path{found_mhs_sets}, \path{mhs_per_level}), e prepara l'ipotesi iniziale;
+              \item \textbf{Coordina l'esplorazione livello per livello}: per ogni livello $k$ BFS:
+                    \begin{itemize}
+                        \item Prende le ipotesi del livello corrente (\path{current_level});
+                        \item \textbf{Identificazione MHS}: itera sulle ipotesi di \path{current_level} per identificare quali sono MHS (verificando se \path{vector} $== (1 \ll$ \path{num_rows}) $- 1$). Gli MHS trovati vengono aggiunti a \path{found_mhs} e rimossi da \path{current_level}. Questa fase implementa la specifica succL: le ipotesi MHS non generano figli poiché qualsiasi loro estensione non sarebbe minimale. Rimuovendole da \path{current_level}, solo le ipotesi non-MHS vengono inviate ai worker per la generazione dei successori;
+                        \item Suddivide le ipotesi in batch adattivi (la dimensione minima, configurabile, è $1000$) bilanciati tra i processi disponibili;
+                        \item Distribuisce i batch ai worker tramite code thread-safe del modulo \path{multiprocessing};
+                        \item Raccoglie i risultati dai worker e aggiorna lo stato globale (nuove ipotesi e statistiche);
+                        \item Se richiesta, applica deduplicazione per rimuovere eventuali duplicati generati dai worker paralleli (Sezione~\ref{subsec:deduplication});
+                        \item Ordina le ipotesi canonicamente (per \path{bin} decrescente) per rispettare il teorema succL al livello successivo, garantendo che ogni ipotesi figlia venga generata esattamente una volta anche in ambiente parallelo.
+                    \end{itemize}
+              \item \textbf{Gestisce timeout e interruzioni}: monitora il tempo rimanente e risponde a richieste di interruzione (Sezione~\ref{sec:timeout});
+              \item \textbf{Finalizza}: come nella versione seriale, ordina gli MHS per cardinalità, scrive il file .mhs di output, stampa il riepilogo a console, mostra la distribuzione per cardinalità degli MHS trovati e indica lo stato di completamento dell'algoritmo.
+          \end{itemize}
+
+
+    \item \textbf{Pool di worker}: un pool di processi (tipicamente pari al numero di core CPU $- 1$) che
+          elaborano in modo indipendente e in parallelo i batch di ipotesi. \\Ogni worker:
+          \begin{itemize}
+              \item \textbf{Riceve un batch} dal master (lista di valori \path{bin}) tramite code thread-safe;
+
+              \item \textbf{Elabora il batch} suddividendolo in sub-batch da 250 ipotesi per responsività alle interruzioni. Per ciascuna ipotesi nei sub-batch:
+                    \begin{enumerate}
+                        \item \textbf{Ricostruzione campi}: ricalcola \path{vector} e \path{card} dal valore \path{bin} utilizzando i vettori colonna pre-caricati (\path{GLOBAL_COL_VECTORS});
+
+                        \item \textbf{Generazione successori}: genera i figli delle ipotesi non-MHS tramite \path{generate_succ_left()} (definita in \path{utility.py}) applicando il teorema succL. L'algoritmo succL garantisce che ogni ipotesi sia generata esattamente una volta dal suo predecessore più a destra, quindi ognuna è unica per costruzione e viene raccolta direttamente nella lista \path{children_tuples} senza necessità di controlli di duplicati;
+
+                        \item \textbf{Controlli frequenti}: verifica timeout e interruzioni tra i sub-batch per terminazioni rapide con risultati parziali.
+                    \end{enumerate}
+
+              \item \textbf{Restituisce al master i risultati}: invia al master una tupla contenente:
+                    \begin{itemize}
+                        \item \path{children_tuples}: lista di nuove ipotesi figlie (tuple \path{(bin, vector, card)}) che verranno elaborate nel livello BFS successivo;
+                        \item \path{timeout_reached}: flag booleano che indica se il worker si è fermato per timeout.
+                    \end{itemize}
+
+                    I worker sono inizializzati una volta sola con \path{worker_initializer}, che copia variabili globali (come \path{GLOBAL_COL_VECTORS}, \path{GLOBAL_COL_MAP}, Sottosezione~\ref{subsec:global_var}) per evitare serializzazioni ripetute di dati grandi. Questo rende tutto più veloce.
+          \end{itemize}
+\end{itemize}
+Ogni worker lavora in isolamento, senza condividere memoria con gli altri o il master (tranne tramite code).
+
+La comunicazione avviene tramite code thread-safe di \path{multiprocessing}:
+\begin{itemize}
+    \item \textbf{Coda di input}: il processo master inserisce i batch di ipotesi nella coda di input; i worker prelevano i batch per l'elaborazione parallela;
+    \item \textbf{Coda di output}: i worker depositano nella coda di output i risultati elaborati (ad es. \path{children_tuples}, flag di timeout, statistiche); il master legge e aggrega tali risultati;
+    \item \textbf{Sincronizzazione dei livelli}: il master attende la terminazione di tutti i worker relativi al livello corrente prima di procedere al livello BFS successivo, garantendo la consistenza dello stato globale e l'applicazione corretta delle operazioni di deduplicazione e aggiornamento degli MHS.
+\end{itemize}
+Grazie a questo modello non c'è concorrenza sui dati globali.
+
+\subsubsection{Strutture dati globali}
+\label{subsec:global_var}
+Precedentemente abbiamo citato delle strutture dati globali condivise tra master e worker. Queste sono:
+
+\begin{itemize}
+    \item \textbf{\path{GLOBAL_COL_VECTORS}}: lista dei vettori colonna della matrice ridotta, dove ogni vettore rappresenta le righe coperte da una colonna specifica. Questa struttura è essenziale per il calcolo del vettore di copertura \path{vector} delle ipotesi nei worker, poiché permette di ricostruire rapidamente il vettore bitwise tramite operazioni OR per ogni colonna presente nell'ipotesi.\\Si è optato per una lista Python per la sua semplicità, facilità di serializzazione con pickle (conversione in byte effettuata automaticamente dalle operazioni del modulo \texttt{multiprocessing} per avere comunicazione di dati dal master ai worker o viceversa), per l'accesso in tempo costante $O(1)$ e per la sua flessibilità. Strutture alternative come array NumPy introdurrebbero overhead per operazioni non vettoriali, mentre \path{array.array} non offre benefici significativi per dati interi;
+
+    \item \textbf{\path{GLOBAL_COL_MAP}}: dizionario che mappa gli indici originali delle colonne (della matrice completa) agli indici nella matrice ridotta. Questa struttura è necessaria per la corretta interpretazione dei risultati finali, poiché permette di risalire alle colonne originali quando si scrivono gli MHS nel file di output.
+          Si è scelto un dizionario Python per il lookup efficiente in tempo costante $O(1)$. Le liste, infatti, richiederebbero scansioni lineari $O(n)$, mentre le tuple non supportano lookup diretto;
+
+    \item \textbf{\path{GLOBAL_NUM_ROWS}}: intero che rappresenta il numero di righe della matrice. È utilizzato per verificare la copertura completa e per calcoli di upper bound nell'esplorazione BFS;
+
+    \item \textbf{\path{GLOBAL_NUM_COLS}}: intero che rappresenta il numero di colonne nella matrice ridotta. È utilizzato per operazioni di manipolazione bitwise e come limite superiore nell'esplorazione (\path{max_level = max(num_rows, num_cols)});
+
+    \item \textbf{\path{GLOBAL_STOP_EVENT}}: oggetto \path{multiprocessing.Event} condiviso tra master e worker per segnalare interruzioni coordinate. Permette al master di notificare tutti i worker di terminare immediatamente in caso di timeout, interruzione utente o superamento limite memoria.
+          Si è scelto \path{multiprocessing.Event} per la sua semplicità e sicurezza nelle segnalazioni thread-safe tra processi, senza rischio di race conditions. Variabili condivise richiederebbero sincronizzazione manuale, aumentando la complessità.
+\end{itemize}
+
+Queste strutture dati sono inizializzate una volta sola nel master e copiate in memoria locale per ciascun processo worker tramite la funzione \path{worker_initializer}, chiamata automaticamente dal \path{multiprocessing.Pool} all'avvio di ogni processo. Poichè fare riferimento alle variabili globali, che sono immutabili e read-only, richiederebbe una continua serializzazione e deserializzazione tramite \path{pickle}, con conseguente spreco di tempo, si è deciso di evitarlo facendone una copia alla creazione del singolo worker. In questo modo si sacrifica memoria aggiuntiva per guadagni significativi in velocità e semplicità del processo, eliminando problemi di concorrenza senza trasmissione ripetuta.
+
+Nel master, invece, sono presenti strutture dati aggiuntive per il coordinamento globale:
+\begin{itemize}
+    \item \textbf{\path{found_mhs}}: lista dei Minimal Hitting Set trovati, accumulati in ordine di scoperta;
+    \item \textbf{\path{found_mhs_sets}}: set di frozenset per verifica rapida di dominanza (pruning) rispetto agli MHS già trovati;
+    \item \textbf{\path{stats_per_level}}: dizionario con statistiche per livello BFS (ipotesi esplorate, generate, deduplicate);
+    \item \textbf{\path{mhs_per_level}}: dizionario che traccia il numero di MHS trovati per cardinalità.
+\end{itemize}
+Queste strutture sono mantenute esclusivamente nel master, poiché richiedono aggiornamenti coordinati e non possono essere distribuite ai worker senza complicare la sincronizzazione.
+
+\subsection{Batching delle ipotesi}
+\label{subsec:batching}
+
+Per ridurre l'overhead di comunicazione tra processi, l'algoritmo parallelo organizza le ipotesi in una gerarchia di batch su due livelli: batch principali distribuiti ai worker e sub-batch interni ai worker per maggiore responsività.
+
+\subsubsection{1. Batch a livello master}
+
+Il master suddivide le ipotesi del livello corrente in batch per la distribuzione ai worker. La dimensione minima è configurabile dall'utente (default: 1000 ipotesi, parametro \path{--batch-size}), ma quella effettiva viene calcolata adattativamente secondo la formula:
+\[
+    \texttt{batch\_size\_local} = \max\left(\texttt{batch\_size}, \frac{\texttt{num\_hyp}}{\texttt{num\_processes} \cdot \texttt{adaptive\_factor}}\right)
+\]
+dove \path{batch_size} è la soglia minima configurabile, e $$\texttt{adaptive\_factor} = \min\left(3, 1 + \frac {\texttt{level}}{3}\right)$$ cresce gradualmente con il livello BFS per gestire l'esplosione combinatoria. Questa formula bilancia comunicazione e parallelizzazione: divide le ipotesi per processi e fattore adattivo per distribuire il carico, mentre farne il massimo garantisce una dimensione minima. Tuttavia, per insiemi di ipotesi molto piccoli (quando $\texttt{num\_hyp} < \texttt{batch\_size\_local}$), viene creato un singolo batch contenente tutte le ipotesi per evitare overhead inutile di comunicazione. Il limite di 3 su \path{adaptive_factor} è stato scelto arbitrariamente come valore iniziale, senza una dimostrazione formale. Valori \textit{inferiori} potrebbero causare batch troppo piccoli, aumentando l'overhead di comunicazione, mentre valori \textit{superiori} potrebbero generare batch troppo grandi, portando a squilibri di carico. Un possibile sviluppo futuro potrebbe essere esplorare valori ottimali attraverso test su istanze diverse, per affinare il bilanciamento tra efficienza e scalabilità.
+
+Infine, il numero di batch è calcolato come un \textit{multiplo} del numero di processi per ottimizzare il bilanciamento del carico, tranne nei casi di insiemi molto piccoli dove viene creato un singolo batch. La distribuzione avviene tramite il meccanismo di \textbf{load balancing dinamico} del \path{multiprocessing.Pool}: non appena un processo worker si libera, preleva il batch successivo disponibile da una coda. Avere un numero di batch multiplo a quello dei processi permette al \path{Pool} di bilanciare il carico in modo efficace, assicurando che i worker più veloci elaborino più batch e minimizzando i tempi di inattività.
+
+Ogni batch è una lista di valori \path{bin} (interi): questa scelta riduce l'uso di memoria e l'overhead di comunicazione tra processi. Invece di trasferire oggetti \path{Hypothesis} completi (con campi aggiuntivi come \path{vector}, \path{card} e \path{num_cols}), si inviano solo i valori \path{bin}, che sono leggeri e facili da serializzare.
+I worker calcolano \path{vector} e \path{card} usando i vettori colonna pre-caricati, con operazioni veloci. Questo ottimizza le prestazioni per istanze grandi, bilanciando risparmio di memoria con un piccolo calcolo aggiuntivo nei worker.
+
+\subsubsection{2. Batch a livello worker: sub-batching}
+
+Ogni worker riceve un batch dal master (di dimensione adattiva) e lo elabora suddividendolo internamente in sub-batch di 250 ipotesi. Si è scelto 250 in quanto rappresenta un quarto del batch minimo. Questa ulteriore granularità serve esclusivamente per \textbf{responsività}: tra un sub-batch e l'altro, il worker verifica frequentemente timeout e interruzioni, permettendo terminazioni rapide con salvataggio dei risultati parziali senza dover completare l'intero batch ricevuto dal master.
+
+Il sub-batching non influisce sulla logica dell'algoritmo, ma migliora significativamente la gestione delle interruzioni in scenari con batch grandi.
+
+\subsection{Strategie di deduplicazione adattive}
+\label{subsec:deduplication}
+
+Una delle sfide principali nella versione parallela è la deduplicazione efficiente delle ipotesi, cioè la rimozione dei valori duplicati.
+
+A livello teorico, ogni worker non dovrebbe poter generare la stessa ipotesi figlia. Infatti, ognuna è generata univocamente solo dal suo predecessore più a destra. Tuttavia, per aumentare la robustezza del sistema, l'implementazione prevede una deduplicazione globale opzionale dopo l'aggregazione dei risultati dai worker.
+
+La deduplicazione globale è attiva di default, ma può essere disabilitata tramite l'opzione \path{--skip-global-dedup}.
+
+L'implementazione adotta \textbf{tre strategie} che si adattano automaticamente alle caratteristiche
+dell'istanza, cioè al numero di colonne ridotte. Di seguito sono descritte tutte e tre.
+
+\subsubsection{1. Bitset}
+\label{subsec:dedup_bitset}
+Quando il numero di colonne ridotte è molto piccolo ($\leq 24$), viene utilizzata una strategia di deduplicazione basata su un \textbf{bitset} (array di bit).
+
+Il bitset (\path{seen_bitset}) è un array di bit inizializzato a 0. La deduplicazione avviene scorrendo tutte le ipotesi generate dall'unione dei risultati dei worker (lista aggregata di tuple \path{(bin_val, vec, card)}) e per ciascuna si prende il valore \path{bin_val} (l'intero che rappresenta il bitmask dell'ipotesi) e lo si usa direttamente come indice nell'array \path{seen_bitset}. Se il bit all'indice \path{bin_val} è 0, l'ipotesi non è stata vista e viene marcata impostando il bit a 1, aggiungendola alla lista delle uniche; se è 1, è un duplicato e viene scartata. Questo permette operazioni di lookup e inserimento in tempo $O(1)$ esatte, senza falsi positivi o negativi, garantendo massima efficienza per spazi binari piccoli. I campi \path{vec} (vettore di copertura) e \path{card} (cardinalità) non servono per la deduplicazione, vengono semplicemente trasferiti alla lista risultante senza ulteriori elaborazioni.
+
+La \textbf{motivazione} che sta dietro al \textbf{limite 24} riguarda la complessità spaziale. Il bitset richiede esattamente $2^{\texttt{num\_cols}}$ bit di memoria, poiché ogni possibile valore \path{bin} (da 0 a $2^{\texttt{num\_cols}} - 1$) corrisponde a una posizione nell'array e \path{bin_val} viene usato direttamente come indice intero. Per $\texttt{num\_cols} = 24$, questo corrisponde a $2^{24} = 16.777.216$ bit, equivalenti a circa 2 MB. Questo è gestibile sulla maggior parte dei sistemi. Da questo valore in poi, la memoria necessaria cresce esponenzialmente: per $\texttt{num\_cols} = 25$ la memoria raddoppierebbe a 4 MB, per $\texttt{num\_cols} = 30$ raggiungerebbe 1 GB. Ciò renderebbe l'allocazione impraticabile o inefficiente.
+
+La complessità temporale totale di questa deduplicazione è, quindi, $O(n)$, dove $n$ è il numero di ipotesi aggregate.
+
+\subsubsection{2. Ordinamento}
+\label{subsec:dedup_ordinamento}
+Per istanze di dimensioni medie ($24 < \texttt{num\_cols} \leq 128$), viene adottata una strategia basata sull'\textbf{ordinamento}:
+\begin{itemize}
+    \item Le ipotesi generate dai worker vengono prima \textbf{aggregate} in una lista unica dal master;
+
+    \item La lista viene \textbf{ordinata} per valore \path{bin} usando il metodo stabile \path{sort()} di Python, che usa l'algoritmo Timsort. Questo confronta gli elementi solo tramite relazione $<$. La complessità temporale di questa fase è $O(n \log n)$, dove $n$ è il numero totale di ipotesi generate;
+
+    \item Dopo l'ordinamento, i duplicati diventano \textbf{consecutivi} e possono essere rimossi in un singolo passaggio lineare: l'algoritmo confronta ciascun \path{bin_val} con \path{last_bin} (che tiene traccia del valore precedente). Se sono uguali, è un duplicato consecutivo e viene contato in \path{duplicates_found} e scartato con \path{continue}. Altrimenti, \path{last_bin} viene aggiornato e l'elemento viene aggiunto alla lista \path{unique}. Questa fase ha complessità temporale $O(n)$.
+\end{itemize}
+La complessità totale di questa strategia è determinata dall'ordinamento e dalla rimozione dei duplicati, risultando in $O(n \log n)$.
+
+Anche la memoria usata risulta controllata: richiede solo lo spazio per la lista ordinata, senza strutture ausiliarie.
+
+Tuttavia, per istanze molto grandi ($> 10^6$ ipotesi), l'ordinamento può diventare costoso in tempo e memoria, motivando l'uso della strategia distribuita (Sottosezione~\ref{subsubsec:dedup_distributed}).
+
+\subsubsection{3. Partizionamento distribuito}
+\label{subsubsec:dedup_distributed}
+
+Quando il numero di colonne ridotte supera 128, lo spazio di ricerca diventa enorme e l'ordinamento impraticabile. Adottiamo una strategia di \textbf{partizionamento distribuito}, dividendo lo spazio binario in bucket più piccoli per deduplicazione scalabile.
+
+La logica di funzionamento è la seguente:
+\begin{itemize}
+    \item Lo spazio degli interi \path{bin} è partizionato in $P$ bucket, dove $P$ è il numero di processi paralleli (\path{num_processes}, tipicamente pari al numero di core CPU$-1$);
+    \item Ogni ipotesi è assegnata a un bucket in base a $\texttt{bin} \mod P$, garantendo una distribuzione uniforme se i valori \path{bin} sono casuali. Ad esempio, con \path{num_processes} $= 4$, un \path{bin} $= 10$ andrà al bucket $10 \mod 4 = 2$;
+    \item Ogni bucket utilizza un set (\path{seen}) per tracciare i valori \path{bin} già incontrati: le ipotesi uniche sono aggiunte a \path{unique}, mentre i duplicati sono scartati;
+    \item Dopo aver processato un bucket, la memoria è liberata con \path{gc.collect()} per ridurre l'uso di RAM.
+\end{itemize}
+
+Usiamo \textbf{liste di liste} per i bucket per semplicità: le liste permettono un accumulo rapido (complessità temporale pari a $O(1)$ per ogni \path{append}, quindi $O(n)$ totale) senza overhead di hash. Strutture come set di set introdurrebbero complessità aggiuntiva ($O(1)$ medio per ogni inserimento, ma $O(n)$ nel caso peggiore per collisioni), rallentando il processo su volumi grandi. Inoltre, separare partizionamento (liste) e deduplicazione (set locali) rende il codice più modulare e debuggabile, permettendo controlli di memoria e timeout senza interrompere la logica.
+
+Un'alternativa sarebbe deduplicare direttamente durante il partizionamento, usando set ausiliari per evitare duplicati. Ad esempio:
+\begin{lstlisting}[style=Python]
+    bucket_seen = [set() for _ in range(num_processes)]
+    buckets = [[] for _ in range(num_processes)]
+
+    for child in all_children:
+        bin_val = child[0]
+        idx = bin_val % num_processes
+        if bin_val not in bucket_seen[idx]:
+            bucket_seen[idx].add(bin_val)
+            buckets[idx].append(child)
+    \end{lstlisting}
+
+Ciò ridurrebbe la memoria accumulata, ma introdurrebbe overhead iniziale per i set. La complessità temporale resterebbe $O(n)$, con un possibile risparmio spaziale in caso di alta duplicazione (scenario raro nel nostro progetto). Abbiamo evitato questa modifica poiché la deduplicazione è solo una misura di sicurezza.
+
+Per quanto riguarda la nostra implementazione, dal punto di vista della complessità \textit{temporale} questa strategia è lineare: $O(n)$, dove $n$ è il numero totale di ipotesi. Infatti, il partizionamento richiede un solo passaggio su tutti gli elementi, mentre ogni bucket viene deduplicato indipendentemente in tempo $O(m)$, con $m \ll n$ pari al numero di ipotesi nel singolo bucket. Rispetto all'ordinamento (Sottosezione~\ref{subsec:dedup_ordinamento}), che ha complessità $O(n \log n)$, questo approccio è più veloce quando $n$ diventa molto grande.
+
+Per quanto riguarda lo \textit{spazio}, è importante notare che entrambe le strategie (ordinamento e partizionamento) richiedono $O(n)$ memoria. La differenza sta nel modo in cui questa memoria viene gestita: mentre l'ordinamento lavora su un'unica grande lista, il partizionamento divide i dati in $P$ strutture più piccole (i \path{set} dei bucket) che vengono processate una alla volta e poi liberate con \path{gc.collect()}. Questo permette di lavorare con blocchi più piccoli di memoria, evitando problemi con sistemi che hanno poca RAM disponibile o memoria frammentata. D'altra parte, per matrici di dimensioni medie questa suddivisione introduce un overhead (strutture multiple e chiamate ripetute al garbage collector) che può risultare meno efficiente dell'ordinamento.
+Si ha, quindi, un vantaggio pratico di gestione della memoria: anche se lo spazio totale è $O(n)$, processando i bucket sequenzialmente e deallocandoli si riduce il picco di memoria necessario in un singolo istante, rendendo l'algoritmo più robusto su macchine con memoria frammentata.
+
+Per questo motivo abbiamo riservato questa strategia alle istanze molto grandi, dove sia il vantaggio in velocità che la gestione granulare della memoria risultano necessari.
+
+\subsection{Monitoraggio memoria e garbage collection}
+
+L'implementazione parallela monitora continuamente l'uso di memoria tramite \path{psutil}
+e adotta politiche proattive, cioè non aspetta che la memoria sia esaurita per intervenire:
+\begin{itemize}
+    \item \textbf{Monitoraggio RSS (Resident Set Size)}: la RSS è la quantità di memoria fisica (RAM) effettivamente usata dal processo in un dato momento. Questa è controllata periodicamente (ogni 0.2 secondi) tramite \path{psutil.Process().memory_info().rss}. La RSS rappresenta la memoria finale effettivamente occupata al termine dell'esecuzione ed è la metrica principale riportata nei risultati;
+
+    \item \textbf{Monitoraggio picco con tracemalloc (opzionale)}: come accennato per la versione seriale, per tracciare il picco di memoria durante l'esecuzione (massima RAM raggiunta), l'implementazione può utilizzare il modulo \path{tracemalloc} di Python. Questo, tuttavia, introduce un overhead significativo a causa del tracciamento granulare di ogni allocazione. Per questo motivo, il modulo è stato reso \textbf{opzionale} e viene attivato solo se l'utente specifica esplicitamente il flag \path{--memory-monitoring}: senza questo flag, viene misurata solo la RSS finale, evitando l'overhead e migliorando le prestazioni. Nei file di output (\path{.mhs} e JSON), quando il monitoraggio non è attivo, il campo del picco di memoria riporta ``non rilevato'', indicando chiaramente che la metrica non è disponibile. Questa ottimizzazione è stata introdotta dopo aver identificato che il tracciamento continuo penalizzava inutilmente le esecuzioni standard;
+
+    \item \textbf{Soglie di intervento}: quando la memoria RSS supera il 95\% (configurabile tramite \path{--memory-threshold}, con valore possibile compreso tra il 50\% e il 99\%. Il valore di default nel caso in cui l'utente scelga di monitorare la memoria (\path{--memory-monitoring}), ma non scelga una soglia, è 95\%) della RAM disponibile:
+          \begin{enumerate}
+              \item \textit{Garbage collection} forzata con \path{gc.collect()}, per liberare memoria inutilizzata;
+              \item Se ancora critico, \textit{terminazione controllata} con salvataggio risultati parziali.
+          \end{enumerate}
+
+    \item \textbf{Gestione proattiva dei batch}: controlli frequenti durante elaborazione batch per evitare sovraccarichi improvvisi;
+    \item \textbf{Salvataggio di emergenza}: utilizza una struttura dati globale \path{_emergency_data} (Sezione \ref{subsec:emergency_safe}) per mantenere lo stato corrente (MHS trovati, statistiche, livello). Questa struttura viene aggiornata a ogni iterazione per salvataggi rapidi.
+\end{itemize}
+
+Questo approccio \textbf{preventivo} contrasta con quello \textit{reattivo} della versione seriale, dove non vengono impostate soglie e l'interruzione avviene solo su eccezione di sistema sollevata dal sistema operativo. L'intervento proattivo è necessario per gestire la complessità del multiprocessing, dove un'esaurimento improvviso della memoria potrebbe lasciare i worker in stati inconsistenti o causare deadlock durante il tentativo di salvataggio.
+
+\section{Gestione timeout e interruzioni}
+\label{sec:timeout}
+
+Entrambe le implementazioni (seriale e parallela) supportano meccanismi di interruzione controllata
+e salvataggio dello stato per gestire esecuzioni prolungate o richieste di terminazione anticipata.
+
+\subsection{Modalità di interruzione}
+
+L'esecuzione può essere interrotta in tre modi:
+\begin{enumerate}
+    \item \textbf{Timeout configurabile}: l'utente può specificare un tempo massimo di esecuzione tramite il parametro \path{--timeout}. L'algoritmo monitora continuamente il tempo trascorso e si interrompe quando il limite viene raggiunto;
+
+    \item \textbf{Interruzione da tastiera}: l'utente può terminare l'esecuzione in qualsiasi momento premendo:
+          \begin{itemize}
+              \item \path{Ctrl+C} (segnale \path{SIGINT}): è un segnale di sistema immediato, catturato dal sistema operativo di Windows e gestito dal programma per terminazioni rapide;
+              \item Il tasto \path{q} (quit) o \path{ESC}: sono input da tastiera controllati attivamente (ogni 20ms) dal programma e in background, cioè il programma verifica periodicamente se l'utente ha premuto questi tasti. Sono utili quando il programma è in esecuzione, ma non bloccato. Essendo un controllo manuale e periodico, potrebbe essere meno immediato. Allo stesso tempo, risulta essere più flessibile proprio perché non dipendente dal sistema operativo.
+          \end{itemize}
+    \item \textbf{Limite memoria}: nella versione parallela, se l'uso di memoria supera la soglia configurata (se non configurata, default 100\%; altrimenti è configurabile tramite \path{--memory-threshold}), l'esecuzione viene interrotta per evitare crash del sistema.
+\end{enumerate}
+
+\subsection{Salvataggio stato parziale}
+\label{subsec:emergency_safe}
+In caso di interruzione, entrambe le versioni salvano automaticamente lo stato corrente dell'esplorazione:
+\begin{itemize}
+    \item \textbf{MHS trovati}: tutti i Minimal Hitting Set identificati fino al momento dell'interruzione;
+    \item \textbf{Statistiche per livello}: numero di ipotesi esplorate, generate e nel caso parallelo eventualmente deduplicate per ogni livello BFS;
+    \item \textbf{Metadati}: tempo di esecuzione, livello BFS raggiunto, eventuale motivo dell'interruzione (\textit{timeout, utente, memoria}). Il livello riportato è quello dell'\textit{ultima iterazione completata}: se il timeout scatta all'inizio del livello $k$ (prima di processare le sue ipotesi), viene salvato il livello $k-1$ come ultimo completato.
+\end{itemize}
+
+Il file di output generato include un campo \path{status} che indica se l'esplorazione è stata completata o interrotta, permettendo di distinguere i risultati completi da quelli parziali.
+
+\subsubsection{Implementazione nella versione seriale}
+
+La versione seriale utilizza un approccio molto semplice, ma comunque efficace:
+\begin{itemize}
+    \item \textbf{Salvataggio periodico}: al termine di ogni livello BFS, lo stato corrente viene salvato in una variabile locale \path{last_saved_state};
+
+    \item \textbf{Handler del segnale di interruzione}: cattura le interruzioni da tastiera e salva immediatamente lo stato utilizzando \path{last_saved_state};
+
+    \item \textbf{Controlli timeout}: verifiche periodiche del tempo trascorso con logica analoga alla versione parallela, ma senza la complessità della coordinazione multi-processo.
+\end{itemize}
+
+\subsubsection{Implementazione nella versione parallela}
+
+L'implementazione parallela adotta meccanismi più sofisticati per garantire salvataggi rapidi e consistenti:
+
+\begin{itemize}
+    \item \textbf{Struttura dati di emergenza} (\path{_emergency_data}): un dizionario globale condiviso che mantiene lo stato aggiornato dell'algoritmo, utile per generare un file di output parziale completo e consistente in caso di interruzione. Contiene:
+          \begin{itemize}
+              \item \textbf{Campi mutabili}: MHS trovati, statistiche per livello, livello corrente. Vengono aggiornati a ogni iterazione tramite la funzione \path{update_emergency_data()};
+              \item \textbf{Campi immutabili}: dati di input (\path{num_cols_original}, \path{num_rows}, \path{col_vectors}, \path{removed_cols}), inizializzati una sola volta tramite la funzione \path{initialize_emergency_input_data()}.
+          \end{itemize}
+
+    \item \textbf{Handler del segnale di interruzione}: cattura le interruzioni da tastiera e invoca immediatamente il salvataggio utilizzando i dati presenti nella struttura dati \path{_emergency_data};
+
+    \item \textbf{Controlli timeout frequenti}: verifiche periodiche (ogni 0.05 secondi nel master) con margini di sicurezza adattivi per massimizzare l'utilizzo del tempo disponibile. I margini variano in base al contesto:
+          \begin{itemize}
+              \item \textbf{Worker}: margine iniziale di 0.05s per permettere l'elaborazione anche con timeout molto brevi (es. 1-2 secondi), controllando successivamente ogni sub-batch;
+              \item \textbf{Master}: margini tra 0.5s e 2.0s per operazioni critiche (deduplicazione) che richiedono tempo aggiuntivo per completamento e cleanup.
+          \end{itemize}
+          I controlli sono stati calibrati per:
+          \begin{itemize}
+              \item Ridurre gli sprechi di tempo, utilizzando quasi tutto il timeout invece di interrompere con diversi secondi di anticipo;
+              \item Garantire tempo sufficiente per la pulizia (terminazione worker, garbage collection) e il salvataggio prima della scadenza effettiva;
+              \item Permettere l'elaborazione efficace anche con timeout molto brevi (1-2 secondi), evitando che i worker restituiscano risultati vuoti.
+          \end{itemize}
+\end{itemize}
+
+\end{document}

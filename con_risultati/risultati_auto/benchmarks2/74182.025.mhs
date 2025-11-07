@@ -1,0 +1,66 @@
+;;; MHS generati dal solver mhs_solver.py
+;;;
+;;; Matrice di input:
+;;; |N| (righe) = 3
+;;; |M| (colonne) = 19
+;;; Origine: benchmarks2
+;;; Densita: 0.1930
+;;; Categoria: tiny
+;;; Matrice ridotta |M'| (colonne non vuote) = 11
+;;; Indici delle colonne vuote rimosse (a partire da 0): [0, 12, 13, 14, 15, 16, 17, 18]
+;;; Livello massimo di esplorazione = 11
+;;;
+;;; Numero di MHS trovati = 25
+;;; Cardinalita' minima = 3, Cardinalita' massima = 3
+;;; Completato? True
+;;; Timeout imposto = 300 secondi
+;;;
+;;; Numero ipotesi generate per livello:
+;;;   Livello 0: 11
+;;;   Livello 1: 55
+;;;   Livello 2: 165
+;;;   Livello 3: 230
+;;;   Livello 4: 262
+;;;   Livello 5: 212
+;;;   Livello 6: 120
+;;;   Livello 7: 45
+;;;   Livello 8: 10
+;;;   Livello 9: 1
+;;;   Livello 10: 0
+;;;
+;;; MHS trovati per livello:
+;;;   Livello 3: 25 MHS
+;;;   Totale: 25 MHS
+;;;
+;;; Prestazioni:
+;;;   Tempo reale = 0.0398 s
+;;;   CPU time totale = 0.0469 s
+;;;     CPU time singoli worker: non presente (esecuzione seriale)
+;;;   Memoria RSS = 20312.0 KB
+;;;   Picco memoria = 68.3 KB
+;;;
+0 1 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0
+0 1 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0
+0 1 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0
+0 1 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0
+0 1 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0
+0 1 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0
+0 1 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0
+0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0
+0 1 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0
+0 1 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0
+0 1 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0
+0 1 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0
+0 1 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0
+0 1 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0
+0 1 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0
+0 1 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0
+0 1 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0
+0 1 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0
+0 1 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0
+0 1 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0
+0 1 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0
+0 1 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0
+0 1 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0
+0 1 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0
+0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0

@@ -1,0 +1,30 @@
+;;; MHS generati dal solver mhs_solver_parallel.py
+;;;
+;;; Matrice di input:
+;;; |N| (righe) = 65
+;;; |M| (colonne) = 203
+;;; Origine: benchmarks1
+;;; Densita: 0.0540
+;;; Categoria: xlarge
+;;; Matrice ridotta |M'| (colonne non vuote) = 143
+;;; Indici delle colonne vuote rimosse (a partire da 0): [0, 20, 31, 32, 52, 64, 68, 76, 81, 82, 84, 85, 86, 87, 88, 89, 90, 91, 92, 99, 100, 101, 102, 103, 104, 106, 107, 109, 111, 112, 115, 116, 120, 121, 122, 123, 124, 129, 134, 136, 141, 151, 152, 153, 154, 155, 159, 160, 161, 162, 173, 183, 184, 185, 186, 187, 191, 192, 193, 194]
+;;; Livello massimo di esplorazione = 143
+;;;
+;;; Numero di MHS trovati = 0
+;;; Cardinalita' minima = -, Cardinalita' massima = -
+;;; Completato? False
+;;; Interruzione al livello = 4
+;;;
+;;; Numero ipotesi generate per livello:
+;;;   Livello 0: 143
+;;;   Livello 1: 10153
+;;;   Livello 2: 477191
+;;;   Livello 3: 16701685
+;;;
+;;; Prestazioni:
+;;;   Tempo reale = 271.2358 s
+;;;   CPU time totale = 189.3125 s
+;;;     CPU time singoli worker: non presente (esecuzione seriale)
+;;;   Memoria RSS = 643588.0 KB
+;;;   Picco memoria = 4723497.5 KB
+;;;

@@ -1,0 +1,91 @@
+\documentclass[../relazione.tex]{subfiles}
+\begin{document}
+\cleardoublepage
+\chapter{Introduzione}
+\label{cap: introduzione}
+
+\section{Il problema dei Minimal Hitting Set}
+Il progetto richiede l'implementazione di un algoritmo per il calcolo dei Minimal Hitting Set (MHS)
+di una matrice rappresentata in modo binario. Data una matrice \(Mat \in \{0,1\}^{N \times M}\), dove le \(N\) righe
+rappresentano una collezione finita di insiemi finiti i cui elementi appartengono al dominio \(\{1,\dots,M\}\), e le
+\(M\) colonne rappresentano gli elementi di tale dominio, un \emph{hitting set} è un sottoinsieme di colonne
+\(H \subseteq \{1,\dots,M\}\) tale che ogni riga contenga almeno un 1 nelle colonne selezionate. Formalmente:
+\[
+    \forall i \in \{1,\dots,N\}:\; \exists j \in H \text{ tale che } Mat_{i,j} = 1.
+\]
+
+Un hitting set si dice \emph{minimale} (MHS) se nessun suo sottoinsieme proprio è ancora un hitting set:
+\[
+    \nexists H' \subset H : H' \text{ è un hitting set}.
+\]
+
+L'obiettivo è enumerare \emph{tutti} i Minimal Hitting Set della matrice di input.
+
+\subsection{Esempio}
+
+Consideriamo la seguente matrice $3 \times 4$:
+\[
+    Mat = \begin{pmatrix}
+        1 & 0 & 1 & 0 \\
+        0 & 1 & 1 & 0 \\
+        0 & 0 & 1 & 1
+    \end{pmatrix}
+\]
+
+Alcuni hitting set validi sono:
+\begin{itemize}
+    \item $H = \{3\}$: copre da sola tutte e tre le righe $\rightarrow$ è un MHS;
+    \item $H = \{1, 2, 4\}$: copre tutte le righe e tutte le colonne sono necessarie $\rightarrow$ è un MHS;
+    \item $H = \{1, 2, 3\}$: copre le righe, ma per farlo basterebbe solo la colonna 3 $\rightarrow$ è un hitting set, ma non è minimale.
+\end{itemize}
+
+I Minimal Hitting Set di questa matrice sono: $\{3\}$ e $\{1, 2, 4\}$.
+
+\section{Specifiche del progetto}
+
+Il progetto richiede l'implementazione di un algoritmo che:
+\begin{enumerate}
+    \item Legga in input una matrice binaria da un file in formato testuale (file \texttt{.matrix});
+    \item Calcoli tutti i Minimal Hitting Set della matrice;
+    \item Produca in output un file \texttt{.mhs} contenente:
+          \begin{itemize}
+              \item La lista di tutti gli MHS trovati;
+              \item Statistiche sull'esecuzione (tempo, memoria, numero di ipotesi esplorate).
+          \end{itemize}
+\end{enumerate}
+
+Il problema è computazionalmente difficile: il numero di MHS può crescere esponenzialmente con
+la dimensione della matrice e l'esplorazione esaustiva dello spazio di ricerca richiede tecniche
+di ottimizzazione per gestire istanze di grandi dimensioni. Dal punto di vista
+della teoria della complessità:
+
+\begin{itemize}
+    \item Il problema di \textbf{decisione} (verificare se esiste un hitting set di cardinalità $\leq k$)
+          è NP-completo;
+    \item Il problema di ottimizzazione relativo al calcolo degli HS di cardinalità minima è una riformulazione equivalente del problema Set Covering, che è NP-hard;
+    \item Nel caso peggiore, il numero di MHS può essere \textbf{esponenziale} rispetto alla dimensione
+          dell'input e può crescere con \(N\) o \(M\);
+    \item La \textbf{difficoltà} intrinseca non risiede solo nell'enumerazione delle soluzioni finali, ma anche nella generazione e nel filtraggio dei candidati intermedi. Lo spazio delle potenziali soluzioni, rappresentato da tutti i possibili sottoinsiemi delle colonne, ha dimensione \(2^M\). Anche con tecniche di pruning aggressive, il numero di candidati esplorati può rimanere molto elevato.
+\end{itemize}
+
+\section{Strategia implementativa}
+
+Per affrontare il problema abbiamo implementato due versioni dell'algoritmo:
+\begin{itemize}
+    \item \textbf{Versione seriale}: implementa un'esplorazione BFS (Breadth-First Search) dello
+          spazio delle ipotesi, ottimizzata per matrici di piccole dimensioni. Utilizza:
+          \begin{itemize}
+              \item Rappresentazione binaria compatta delle ipotesi con operazioni bitwise efficienti;
+              \item Ordinamento canonico per valore binario decrescente (regola di precedenza);
+              \item Generazione univoca delle ipotesi tramite partizionamento succL dei successori immediati;
+              \item Strutture dati semplici con basso overhead computazionale.
+          \end{itemize}
+
+    \item \textbf{Versione parallela}: estende la versione seriale con tecniche di parallelizzazione
+          multi-processo, con particolare attenzione alla deduplicazione (opzionale) e al monitoraggio della memoria (opzionale, attivabile con il flag \path{--memory-monitoring} per evitare overhead in esecuzioni standard), il tutto mantenendo le stesse garanzie di unicità della generazione. È progettata per scalare su matrici di grandi dimensioni sfruttando un'architettura master-worker.
+\end{itemize}
+
+La scelta tra le due versioni avviene automaticamente in base alle dimensioni della matrice di input
+oppure può essere forzata manualmente dall'utente.
+
+\end{document}

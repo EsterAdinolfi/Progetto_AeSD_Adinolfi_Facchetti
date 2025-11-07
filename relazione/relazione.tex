@@ -1,0 +1,111 @@
+\documentclass [12 pt, a4paper, oneside, hidelinks]{report}
+
+\usepackage[]{hyperref}
+\hypersetup{
+	pdftitle={RelazioneAeSD},
+	pdfauthor={Adinolfi Ester, Facchetti Nicole},       
+	pdfpagemode=UseOutlines
+}
+\usepackage{eurosym}
+\usepackage{sectsty}
+\allsectionsfont{\raggedright}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[main=italian]{babel}
+\usepackage{geometry}
+\geometry{a4paper, inner=30mm, outer=30mm, top=22mm, bottom=22mm}
+\usepackage{textcomp}
+\usepackage{graphicx}
+\graphicspath{{Immagini/}}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\usepackage{amssymb}
+\usepackage{cancel}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{gensymb}
+\usepackage{setspace}
+\usepackage{csquotes}
+\usepackage[parfill]{parskip}
+\usepackage{color}
+\usepackage{rotating}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={.}}
+\sisetup{separate-uncertainty}
+\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+\usepackage[bottom]{footmisc}
+% Bibliografia rimossa (nessun file .bib fornito)
+\usepackage[export]{adjustbox}
+\usepackage{subfiles}
+\usepackage{chemformula}
+\usepackage{multirow}
+\usepackage{comment}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{listingsutf8}
+\usepackage{ulem}
+\usepackage{url}
+\usepackage{keyval}
+\usepackage{ifthen}
+\usepackage{pifont}
+\usepackage{makecell}
+\urlstyle{same}
+\usepackage{xcolor}
+\definecolor{bashcomment}{rgb}{0.5,0.5,0.5}
+\newcommand{\HRule}[1]{\rule{\linewidth}{#1}}
+\lstset{
+    basicstyle=\ttfamily\small,
+    inputencoding=utf8,
+    extendedchars=true,
+    breaklines=true,
+    postbreak=\mbox{\textcolor{black}{$\hookrightarrow$}\space},
+    commentstyle=\color{bashcomment},
+    morecomment=[l]{\#},
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {à}{{\`a}}1
+}
+\lstdefinestyle{Python}{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    breaklines=true,
+    showstringspaces=false,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    captionpos=b,
+}
+
+\lstdefinestyle{bash}{
+    language=bash,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{bashcomment},
+    stringstyle=\color{red},
+    breaklines=true,
+    showstringspaces=false,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    captionpos=b,
+}
+
+\normalem
+
+\interfootnotelinepenalty=10000
+
+\begin{document}
+       
+    \subfile{Capitoli/Frontespizio}
+    \subfile{Capitoli/Indice}
+    \subfile{Capitoli/1_introduzione}
+    \subfile{Capitoli/2_algoritmo}
+    \subfile{Capitoli/3_interfaccia}
+    \subfile{Capitoli/4_sperimentazione}
+    \subfile{Capitoli/5_conclusioni}
+
+
+\end{document}

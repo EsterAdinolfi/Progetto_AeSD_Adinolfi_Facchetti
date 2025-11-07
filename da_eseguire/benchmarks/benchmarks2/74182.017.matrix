@@ -1,0 +1,8 @@
+;;; Host = zelda6, Version = 26.1, date = 2010-01-13-22-00-50
+;;; Source = /tilde/dekleer/projects/GDE/DXC/dxc-09-syn-benchmark-1.1/74182/74182.017.scn
+;;; Error status nil
+;;; Injected fault:16(o4) 12(o3) 
+;;; Map 1(z1) 2(o1) 3(z2) 4(z3) 5(z4) 6(z5) 7(o2) 8(z6) 9(z7) 10(z8) 11(z9) 12(o3) 13(z10) 14(z11) 15(z12) 16(o4) 17(z13) 18(z14) 19(o5) 
+0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 -
+0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 -
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 -

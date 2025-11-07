@@ -1,0 +1,42 @@
+;;; MHS generati dal solver mhs_solver.py
+;;;
+;;; Matrice di input:
+;;; |N| (righe) = 3
+;;; |M| (colonne) = 19
+;;; Origine: benchmarks2
+;;; Densita: 0.1053
+;;; Categoria: tiny
+;;; Matrice ridotta |M'| (colonne non vuote) = 6
+;;; Indici delle colonne vuote rimosse (a partire da 0): [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+;;; Livello massimo di esplorazione = 6
+;;;
+;;; Numero di MHS trovati = 6
+;;; Cardinalita' minima = 3, Cardinalita' massima = 3
+;;; Completato? True
+;;; Timeout imposto = 300 secondi
+;;;
+;;; Numero ipotesi generate per livello:
+;;;   Livello 0: 6
+;;;   Livello 1: 15
+;;;   Livello 2: 20
+;;;   Livello 3: 6
+;;;   Livello 4: 1
+;;;   Livello 5: 0
+;;;
+;;; MHS trovati per livello:
+;;;   Livello 3: 6 MHS
+;;;   Totale: 6 MHS
+;;;
+;;; Prestazioni:
+;;;   Tempo reale = 0.0051 s
+;;;   CPU time totale = 0.0000 s
+;;;     CPU time singoli worker: non presente (esecuzione seriale)
+;;;   Memoria RSS = 20084.0 KB
+;;;   Picco memoria = 19.4 KB
+;;;
+0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0
+0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0
+0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1
+0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0
+0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0
+0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1

@@ -1,0 +1,30 @@
+\documentclass[../relazione.tex]{subfiles}
+\begin{document}
+\cleardoublepage
+\chapter{Conclusioni}
+
+Il progetto ha sviluppato due implementazioni funzionanti dell'algoritmo per il calcolo dei
+Minimal Hitting Set: una versione seriale per istanze medio-piccole e una versione parallela per le istanze medio-grandi.
+
+Il sistema sviluppato include inoltre:
+\begin{itemize}
+    \item Interfaccia interattiva (\path{menu.py}) per utilizzo guidato;
+    \item Script di automazione (\path{setup.py}) per elaborazione collettiva di istanze multiple;
+    \item Raccolta e analisi automatica delle performance (\path{collector_performance.py});
+    \item Gestione robusta di timeout e interruzioni con controlli ottimizzati.
+\end{itemize}
+
+Gli esperimenti condotti hanno mostrato che:
+\begin{itemize}
+    \item L'algoritmo è molto efficace su istanze fino a \textit{small} (completamento 100\%);
+    \item Le istanze \textit{medium} e \textit{large} mostrano già difficoltà significative (completamento 40\%);
+    \item Le istanze \textit{xlarge} sono oltre la fattibilità (nessun completamento), con memoria e tempo come principali colli di bottiglia;
+    \item Le ottimizzazioni implementate (rimozione colonne vuote; se attiva, una deduplicazione adattiva;
+          garbage collection) sono fondamentali per gestire istanze di dimensioni realistiche;
+    \item I controlli timeout ottimizzati massimizzano l'utilizzo del tempo disponibile,
+          riducendo gli sprechi e migliorando l'efficienza sui timeout brevi.
+\end{itemize}
+
+In generale, il progetto ha raggiunto gli obiettivi prefissati, fornendo un sistema completo e robusto per il calcolo dei Minimal Hitting Set, con buone performance su istanze di dimensioni moderate e una solida base per futuri miglioramenti e ottimizzazioni.
+
+\end{document}

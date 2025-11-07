@@ -1,0 +1,307 @@
+
+Statistiche Complessive:
+Completati: 29/43 (67.4%)
+Tempo medio: 111.36s
+Totale MHS trovati: 47903
+Categorie lette direttamente dai file .mhs
+
+================================================================================
+STATISTICHE DETTAGLIATE PER GRUPPI DI BENCHMARK
+================================================================================
+
+--- Gruppo: benchmarks1 (23 file) ---
+Completati: 15/23 (65.2%)
+Totale MHS trovati: 35601
+
+Tempo Reale (secondi):
+  Media: 126.61
+  Mediana: 4.28
+  Moda: 1.14
+
+Tempo CPU (secondi):
+  Media: 68.97
+  Mediana: 10.02
+  Moda: 0.06
+
+Memoria RSS (KB):
+  Media: 697759.65
+  Mediana: 44984.00
+  Moda: 27624.00
+
+Picco Memoria (KB):
+  Media: 1708645.30
+  Mediana: 12207.00
+  Moda: 1738.80
+
+--- Gruppo: benchmarks2 (20 file) ---
+Completati: 14/20 (70.0%)
+Totale MHS trovati: 12302
+
+Tempo Reale (secondi):
+  Media: 93.83
+  Mediana: 0.90
+  Moda: 3.72
+
+Tempo CPU (secondi):
+  Media: 33.28
+  Mediana: 0.29
+  Moda: 0.09
+
+Memoria RSS (KB):
+  Media: 165661.60
+  Mediana: 25124.00
+  Moda: 38368.00
+
+Picco Memoria (KB):
+  Media: 600920.05
+  Mediana: 1069.70
+  Moda: 10097.30
+
+--- Gruppo: all (43 file) ---
+Completati: 29/43 (67.4%)
+Totale MHS trovati: 47903
+
+Tempo Reale (secondi):
+  Media: 111.36
+  Mediana: 3.72
+  Moda: 3.72
+
+Tempo CPU (secondi):
+  Media: 52.37
+  Mediana: 8.00
+  Moda: 0.12
+
+Memoria RSS (KB):
+  Media: 450272.19
+  Mediana: 38368.00
+  Moda: 38368.00
+
+Picco Memoria (KB):
+  Media: 1193424.25
+  Mediana: 10097.30
+  Moda: 10097.30
+
+================================================================================
+STATISTICHE DETTAGLIATE PER CATEGORIA
+================================================================================
+
+--- Categoria: trivial (3 file) ---
+Completati: 3/3 (100.0%)
+Totale MHS trovati: 6
+
+Tempo Reale (secondi):
+  Media: 0.29
+  Mediana: 0.29
+  Moda: 0.28
+
+Tempo CPU (secondi):
+  Media: 0.06
+  Mediana: 0.06
+  Moda: 0.06
+
+Memoria RSS (KB):
+  Media: 24102.67
+  Mediana: 24192.00
+  Moda: 24192.00
+
+Picco Memoria (KB):
+  Media: 629.27
+  Mediana: 624.90
+  Moda: 624.90
+
+--- Categoria: tiny (10 file) ---
+Completati: 10/10 (100.0%)
+Totale MHS trovati: 152
+
+Tempo Reale (secondi):
+  Media: 0.55
+  Mediana: 0.53
+  Moda: 0.77
+
+Tempo CPU (secondi):
+  Media: 0.09
+  Mediana: 0.09
+  Moda: 0.09
+
+Memoria RSS (KB):
+  Media: 23984.40
+  Mediana: 23978.00
+  Moda: 24020.00
+
+Picco Memoria (KB):
+  Media: 662.33
+  Mediana: 638.20
+  Moda: 670.10
+
+--- Categoria: small (10 file) ---
+Completati: 10/10 (100.0%)
+Totale MHS trovati: 1107
+
+Tempo Reale (secondi):
+  Media: 5.71
+  Mediana: 1.28
+  Moda: 1.14
+
+Tempo CPU (secondi):
+  Media: 11.53
+  Mediana: 1.02
+  Moda: 0.55
+
+Memoria RSS (KB):
+  Media: 41030.00
+  Mediana: 27984.00
+  Moda: 27624.00
+
+Picco Memoria (KB):
+  Media: 16929.32
+  Mediana: 2208.50
+  Moda: 1738.80
+
+--- Categoria: medium (10 file) ---
+Completati: 4/10 (40.0%)
+Totale MHS trovati: 12150
+
+Tempo Reale (secondi):
+  Media: 187.11
+  Mediana: 299.74
+  Moda: 3.72
+
+Tempo CPU (secondi):
+  Media: 66.46
+  Mediana: 32.92
+  Moda: 9.03
+
+Memoria RSS (KB):
+  Media: 307338.80
+  Mediana: 174102.00
+  Moda: 38368.00
+
+Picco Memoria (KB):
+  Media: 1201177.77
+  Mediana: 417159.05
+  Moda: 10097.30
+
+--- Categoria: large (5 file) ---
+Completati: 2/5 (40.0%)
+Totale MHS trovati: 34488
+
+Tempo Reale (secondi):
+  Media: 190.79
+  Mediana: 284.81
+  Moda: 63.69
+
+Tempo CPU (secondi):
+  Media: 66.72
+  Mediana: 39.17
+  Moda: 190.11
+
+Memoria RSS (KB):
+  Media: 1468941.60
+  Mediana: 343264.00
+  Moda: 147400.00
+
+Picco Memoria (KB):
+  Media: 849251.50
+  Mediana: 189353.90
+  Moda: 176067.80
+
+--- Categoria: xlarge (5 file) ---
+Completati: 0/5 (0.0%)
+Totale MHS trovati: 0
+
+Tempo Reale (secondi):
+  Media: 380.01
+  Mediana: 424.20
+  Moda: 176.78
+
+Tempo CPU (secondi):
+  Media: 227.44
+  Mediana: 189.31
+  Moda: 71.09
+
+Memoria RSS (KB):
+  Media: 1644231.20
+  Mediana: 643588.00
+  Moda: 344524.00
+
+Picco Memoria (KB):
+  Media: 6976280.68
+  Mediana: 8661639.80
+  Moda: 1678859.20
+
+================================================================================
+ANALISI CORRELAZIONE DENSITÀ-PRESTAZIONI
+================================================================================
+
+Statistiche Densità Globali:
+  Range: 0.0021 - 0.3676
+  Media: 0.0955
+  Mediana: 0.0764
+
+------------------------------------------------------------
+CORRELAZIONI DENSITÀ-PRESTAZIONI
+------------------------------------------------------------
+
+Approccio 1: Solo matrici completate (29 istanze)
+  Tempo Reale:     0.391
+  Memoria RSS:     0.447
+  Picco Memoria:   0.369
+  MHS Trovati:     0.370
+
+Approccio 2: Tutte le matrici (43 istanze)
+  Tempo Reale:     -0.390
+  Memoria RSS:     -0.199
+  Picco Memoria:   -0.334
+  MHS Trovati:     -0.123
+
+Confronto tra approcci:
+  Diff. Tempo:     0.781
+  Diff. RSS:       0.646
+  Diff. Picco:     0.703
+  Diff. MHS:       0.494
+
+------------------------------------------------------------
+STATISTICHE DENSITÀ PER CATEGORIA
+------------------------------------------------------------
+
+Categoria trivial:
+  Range: 0.0078 - 0.1000
+  Media: 0.0526
+  Mediana: 0.0500
+  Corr. Tempo: -0.999
+
+Categoria tiny:
+  Range: 0.0114 - 0.2105
+  Media: 0.1141
+  Mediana: 0.1053
+  Corr. Tempo: 0.536
+
+Categoria small:
+  Range: 0.0046 - 0.3676
+  Media: 0.1215
+  Mediana: 0.1032
+  Corr. Tempo: -0.102
+
+Categoria medium:
+  Range: 0.0021 - 0.2769
+  Media: 0.0741
+  Mediana: 0.0261
+  Corr. Tempo: -0.408
+
+Categoria large:
+  Range: 0.0500 - 0.3176
+  Media: 0.1329
+  Mediana: 0.0798
+  Corr. Tempo: -0.780
+
+Categoria xlarge:
+  Range: 0.0167 - 0.0749
+  Media: 0.0376
+  Mediana: 0.0256
+  Corr. Tempo: -0.863
+
+================================================================================
+STATISTICHE SINTETICHE PER ORIGINE
+================================================================================
+- benchmarks1: 23 file, 65.2% completati, 35601 MHS trovati, tempo medio 126.61s
+- benchmarks2: 20 file, 70.0% completati, 12302 MHS trovati, tempo medio 93.83s

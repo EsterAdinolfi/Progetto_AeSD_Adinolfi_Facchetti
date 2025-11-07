@@ -1,0 +1,472 @@
+\documentclass[../relazione.tex]{subfiles}
+\begin{document}
+\cleardoublepage
+\chapter{Interfaccia e parametri}
+    \label{cap: interfaccia}
+
+    Per facilitare l'utilizzo del programma, è stata sviluppata un'interfaccia testuale interattiva.
+    In questo capitolo vengono descritti i file creati, il loro flusso di utilizzo e tutti i parametri configurabili tramite l'interfaccia.
+
+    \section{Architettura software}
+    
+    Il progetto è organizzato nei seguenti moduli principali:
+    \begin{itemize}
+        \item \textbf{\path{mhs_solver.py}}: implementazione dell'algoritmo seriale;
+        \item \textbf{\path{mhs_solver_parallel.py}}: implementazione dell'algoritmo parallelo;
+        \item \textbf{\path{utility.py}}: funzioni di supporto (tra cui funzioni di parsing e di gestione I/O);
+        \item \textbf{\path{run.py}}: wrapper per l'esecuzione del programma su una singola matrice;
+        \item \textbf{\path{matrices_selection.py}}: selezione automatica delle matrici di test;
+        \item \textbf{\path{setup.py}}: script per la selezione e l'esecuzione automatizzata su tutte le matrici selezionate;
+        \item \textbf{\path{reprocess_missing.py}}: script per rieseguire l'elaborazione su file mancanti o incompleti;
+        \item \textbf{\path{cleanup_misplaced.py}}: script per la gestione e il riposizionamento dei file generati in posizioni errate;
+        \item \textbf{\path{collector_performance.py}}: raccolta e analisi delle statistiche di performance;
+        \item \textbf{\path{menu.py}}: interfaccia testuale interattiva per l'utente.
+    \end{itemize}
+    
+    È inoltre disponibile \textbf{\path{show_selection.py}}, uno script di utilità per la visualizzazione formattata delle matrici selezionate.
+
+    \section{Pre-processamento: rimozione colonne vuote}
+    \label{sec:preprocessing}
+    
+    Prima dell'esecuzione dell'algoritmo, il sistema applica automaticamente un passo di pre-processamento 
+    che rimuove tutte le colonne completamente vuote (contenenti solo zeri) dalla matrice di input.
+    
+    Questo perché una colonna vuota non copre alcuna riga, quindi non può mai far parte di 
+    un Minimal Hitting Set. La sua inclusione aumenterebbe inutilmente lo spazio di ricerca da $2^{M'}$ 
+    a $2^M$ (con $M'$ numero di colonne ridotte, $M$ numero di colonne originali, $M' < M$) senza modificare l'insieme delle soluzioni.
+    
+    Il sistema mantiene un vettore \path{col_map} che mappa gli indici delle colonne ridotte agli indici originali. Questo permette di:
+    \begin{itemize}
+        \item Eseguire l'algoritmo sulla matrice ridotta ($N \times M'$);
+        \item Ricostruire gli MHS con gli indici originali nel file di output.
+    \end{itemize}
+    
+    L'opzione \path{--no-reduction} disabilita questa ottimizzazione, mantenendo tutte le colonne nella matrice elaborata. Questo è utile solo per:
+    \begin{itemize}
+        \item Debugging dell'implementazione;
+        \item Confronti teorici tra configurazioni diverse;
+        \item Validazione della correttezza dell'ottimizzazione.
+    \end{itemize}
+    
+    La riduzione è sempre consigliata e attiva per default in tutti gli script.
+
+    \section{Esecuzione su singola matrice (\texttt{run.py})}
+    \label{sec:run.py}
+    Lo script \path{run.py} permette di eseguire il solver su una singola matrice. 
+
+    La sintassi generale è la seguente:    
+    \begin{lstlisting}[language=bash]
+    python run.py [file_matrice] [opzioni]
+    \end{lstlisting}
+    
+    \path{file_matrice} rappresenta il percorso del file \path{.matrix} da elaborare (default: \path{esempio.matrix}).
+    
+    Le opzioni disponibili sono:
+    \begin{itemize}
+        \item \textbf{Timeout} (\path{--timeout=N}): imposta il tempo massimo di esecuzione in secondi. 
+        Se omesso, non c'è limite temporale. In caso di timeout, l'esecuzione viene interrotta e viene salvato un file \path{.mhs} contenente tutti gli MHS trovati fino a quel momento;        
+        \item \textbf{Modalità di esecuzione} (\path{--serial} o \path{--parallel}): forza l'utilizzo 
+        del solver seriale o parallelo. Se omesso, la modalità viene scelta automaticamente in base 
+        alle dimensioni della matrice utilizzando i criteri di categorizzazione definiti per la 
+        selezione delle matrici di test (Sezione~\ref{sec:selezione_matrici}): usa la modalità seriale con le categorie \textit{trivial}, \textit{tiny} e \textit{small}, mentre per le altre (\textit{medium, large, xlarge}) si utilizza la modalità parallela.
+
+        La scelta automatica è implementata nella funzione \path{is_small_matrix()} in \path{utility.py};
+        
+        \item \textbf{Directory di output} (\path{--outdir=DIR}): specifica la cartella dove salvare 
+        il file \path{.mhs} generato. Se omessa, il file viene salvato nella stessa directory del 
+        file di input;
+        
+        \item \textbf{Monitoraggio memoria} (\path{--memory-monitoring} e \path{--memory-threshold=N}): 
+        abilita il monitoraggio continuo della RAM (solo in modalità parallela). Quando si usa il menu 
+        interattivo, questa opzione è abilitata per default; quando si invocano gli script direttamente 
+        da riga di comando, nella versione parallela richiede il flag esplicito \path{--memory-monitoring}.
+        
+        Il parametro \path{--memory-threshold=N} configura la soglia percentuale. I valori validi sono 
+        compresi tra 50\% e 99\% (default: 95\%). Valori più bassi offrono maggiore margine di sicurezza, ma 
+        potrebbero interrompere prematuramente l'esecuzione, per questo motivo non vengono permessi. Quando il monitoraggio è disabilitato, la soglia non è rilevante. 
+        
+        Questi parametri sono utili per matrici molto grandi o sistemi con RAM limitata proprio per 
+        prevenire crash da esaurimento memoria;
+        
+        \item \textbf{Parametri di parallelizzazione} (\path{--processes=N} e \path{--batch-size=SIZE}): 
+        ottimizzano l'esecuzione parallela per specifiche configurazioni hardware (attivi solo in 
+        modalità parallela):
+        \begin{itemize}
+            \item \path{--processes=N}: numero di processi worker (default: CPU count - 1). I valori 
+            consigliati sono: 2-3 per CPU a 4 core, 4-7 per 8 core, 8-15 per 16+ core. Troppi processi 
+            causano overhead eccessivo;
+            \item \path{--batch-size=SIZE}: soglia minima per la dimensione dei batch (default: 1000). 
+            La dimensione effettiva viene calcolata adattativamente come descritto nella Sottosezione~\ref{subsec:batching}.
+        \end{itemize}
+        Se omessi, utilizzano valori automatici ottimizzati;
+        
+        \item \textbf{Riduzione colonne vuote} (\path{--no-reduction}): disabilita la rimozione 
+        automatica delle colonne completamente vuote. Per default, le colonne vuote vengono rimosse 
+        per migliorare le prestazioni senza alterare i risultati (vedi Sezione~\ref{sec:preprocessing}), 
+        riducendo lo spazio di ricerca da $2^M$ a $2^{M'}$. Mantenere tutte le colonne è utile solo 
+        per debugging o confronti teorici;
+        
+        \item \textbf{Deduplicazione globale} (\path{--skip-global-dedup}): disabilita la deduplicazione 
+        globale delle ipotesi nel solver parallelo. Per default, la deduplicazione è attiva per 
+        garantire robustezza, ma può essere disabilitata per confronti teorici o debugging. È attivo 
+        solo in modalità parallela.
+        
+    \end{itemize}
+    
+    \subsection{Esempi di utilizzo}
+    
+    Esecuzione con timeout di 60 secondi, modalità seriale forzata:
+    \begin{lstlisting}[language=bash]
+    python run.py matrice.matrix --timeout=60 --serial
+    \end{lstlisting}
+    
+    Esecuzione in modalità parallela forzata con monitoraggio memoria (soglia 90\%):
+    \begin{lstlisting}[language=bash]
+    python run.py matrice_grande.matrix --parallel --memory-monitoring --memory-threshold=90
+    \end{lstlisting}
+    
+    Esecuzione parallela con parametri personalizzati (8 processi, batch da minimo 2000):
+    \begin{lstlisting}[language=bash]
+    python run.py matrice_xlarge.matrix --parallel --processes=8 --batch-size=2000
+    \end{lstlisting}
+    
+    \section{Esecuzione batch automatizzata (\texttt{setup.py})}
+    
+    Lo script \path{setup.py} gestisce l'intero workflow di elaborazione automatica su un insieme 
+    di matrici di test. È progettato per esperimenti sistematici e raccolta di statistiche di performance.
+    
+    L'esecuzione di \path{setup.py} esegue le seguenti fasi in sequenza:
+    
+    \begin{enumerate}
+        \item \textbf{Verifica e creazione cartelle}: crea le cartelle specificate per le matrici 
+        selezionate e la cartella dei risultati (\path{risultati_auto/}, \path{risultati_parallel/} o 
+        \path{risultati_serial/} a seconda della modalità scelta) se non esistono;
+        
+        \item \textbf{Selezione matrici}: se la cartella delle matrici selezionate è vuota, esegue 
+        \path{matrices_selection.py} che:
+        \begin{itemize}
+            \item Scansiona le cartelle \path{benchmarks/} (o altre specificate);
+            \item Analizza ogni matrice (dimensioni, densità);
+            \item Categorizza le matrici (trivial, tiny, small, medium, large, xlarge);
+            \item Seleziona un sottoinsieme rappresentativo;
+            \item Copia le matrici selezionate nella cartella specificata;
+            \item Genera \path{selection.json} con metadati.
+        \end{itemize}
+        
+        \item \textbf{Esecuzione solver}: per ogni matrice nella cartella selezionata:
+        \begin{itemize}
+            \item Determina automaticamente la modalità (seriale/parallela);
+            \item Esegue il solver tramite \path{run.py};
+            \item Verifica il codice di uscita del processo per rilevare errori o timeout;
+            \item Controlla che il file \path{.mhs} sia stato effettivamente generato;
+            \item Salva il file \path{.mhs} nella cartella dei risultati appropriata;
+            \item In caso di errore, visualizza diagnostica e continua con le matrici successive;
+            \item Al termine, mostra un riepilogo con statistiche di successo/fallimento.
+        \end{itemize}
+        
+        \item \textbf{Verifica e pulizia post-elaborazione}:
+        \begin{itemize}
+            \item Esegue \path{cleanup_misplaced_mhs()} per spostare eventuali file \path{.mhs} 
+            trovati in posizioni errate;
+            \item Esegue \path{reprocess_missing_matrices()} per riprocessare automaticamente 
+            matrici che non hanno generato file \path{.mhs};
+            \item Entrambe le operazioni utilizzano gli stessi parametri specificati per il batch 
+            principale (timeout, modalità, monitoraggio memoria, directory, ecc.);
+            \item Operano in modalità non interattiva senza richiedere conferme;
+            \item Eventuali errori vengono loggati, ma non bloccano il workflow.
+        \end{itemize}
+        
+        \item \textbf{Raccolta performance}: esegue \path{collector_performance.py} che:
+        \begin{itemize}
+            \item Scansiona tutti i file \path{.mhs} generati;
+            \item Estrae metriche (tempo, memoria, MHS trovati, completamento);
+            \item Genera \path{results.json} nella cartella dei risultati.
+        \end{itemize}
+        
+        \item \textbf{Analisi statistiche}: genera \path{statistiche_prestazioni.txt} con report dettagliato delle performance per categoria nella cartella dei risultati.
+    \end{enumerate}
+    
+    La sintassi generale per eseguire lo script è la seguente:
+    \label{sec:setup.py}
+    \begin{lstlisting}[language=bash]
+    python setup.py [opzioni]
+    \end{lstlisting}
+
+    Le opzioni disponibili sono le stesse di \path{run.py} (Sezione~\ref{sec:run.py}) e vengono applicate uniformemente a tutte le matrici elaborate nel batch. Inoltre, sono disponibili le seguenti opzioni specifiche:
+    \begin{itemize}
+        \item \path{--selected-dir=DIR}: specifica la directory delle matrici selezionate (default: \path{selezionate/});
+        \item \path{--results-dir=DIR}: prende il posto di \path{--outdir=DIR} presente in \path{run.py} e specifica la directory dei risultati (default: basato sulla modalità scelta).
+    \end{itemize}
+    
+    \subsection{Esempi di utilizzo}
+    
+    Esecuzione standard con impostazioni automatiche:
+    \begin{lstlisting}[language=bash]
+    python setup.py
+    \end{lstlisting}
+    
+    Esecuzione con timeout di 120 secondi e modalità parallela forzata:
+    \begin{lstlisting}[language=bash]
+    python setup.py --timeout=120 --parallel
+    \end{lstlisting}
+    
+    Esecuzione con parametri di parallelizzazione personalizzati:
+    \begin{lstlisting}[language=bash]
+    python setup.py --parallel --processes=12 --batch-size=1500
+    \end{lstlisting}
+    
+    Esecuzione con directory personalizzate:
+    \begin{lstlisting}[language=bash]
+    python setup.py --selected-dir altre_matrici --results-dir altri_risultati
+    \end{lstlisting}
+    
+    \subsection{Gestione errori e robustezza}
+    
+    Lo script \path{setup.py} implementa meccanismi robusti di gestione errori per garantire 
+    che l'elaborazione batch continui anche in caso di problemi su singole matrici:
+    
+    \begin{itemize}
+        \item \textbf{Verifica exit code}: dopo ogni esecuzione, controlla il codice di uscita del processo. 
+        Un codice diverso da zero indica timeout, crash o errore interno;
+        
+        \item \textbf{Continuazione dopo errore}: anche in caso di errore critico su una matrice, 
+        l'elaborazione procede con le matrici rimanenti. Questo evita che un singolo caso problematico 
+        blocchi l'intero batch;
+        
+        \item \textbf{Gestione interruzioni utente}: gli script gestiscono anche le interruzioni 
+        da tastiera (\path{KeyboardInterrupt}). In questo caso, l'intero programma si arresta, dopo aver salvato i risultati parziali ottenuti fino a quel momento;
+        
+        \item \textbf{Verifica file output}: controlla che il file \path{.mhs} sia stato effettivamente 
+        creato. La mancanza del file indica un'interruzione anomala (es. timeout prima del salvataggio);
+
+        \item \textbf{Verifica e pulizia post-elaborazione}: dopo l'esecuzione principale, sposta 
+        automaticamente i file \path{.mhs} mal posizionati e riprocessa le matrici mancanti utilizzando 
+        gli stessi parametri del batch, garantendo completezza dei risultati senza intervento manuale;
+        
+        \item \textbf{Riepilogo statistiche}: al termine, mostra un report con numero totale di matrici 
+        processate, successi, fallimenti e percentuale di successo.
+    \end{itemize}
+    
+    Questa gestione è particolarmente importante per batch di grandi dimensioni o matrici challenging 
+    che potrebbero causare timeout o esaurimento memoria. Il riepilogo finale permette di identificare 
+    rapidamente quali matrici hanno causato problemi per analisi successive.
+
+    \section{Script di utilità e manutenzione}
+    
+    Per facilitare la gestione e il debugging del sistema, sono stati implementati due script helper 
+    che automatizzano le operazioni di pulizia dei file mal posizionati e il riprocessamento di matrici mancanti. 
+    \path{setup.py} integra automaticamente le funzionalità di questi script come parte del workflow batch, eliminando la necessità 
+    di intervento manuale nella maggior parte dei casi. 
+    
+    \subsection{Pulizia file mal posizionati (\texttt{cleanup\_misplaced.py})}
+    
+    Durante l'esecuzione batch, può accadere che alcuni file \path{.mhs} vengano erroneamente salvati 
+    nella cartella delle matrici sorgente (\path{selezionate/}) invece che nella cartella dei risultati 
+    appropriata (\path{risultati_auto/}, \path{risultati_parallel/} o \path{risultati_serial/}). 
+    Questo script automatizza il processo di identificazione e spostamento. La sintassi è la seguente:
+    
+    \begin{lstlisting}[language=bash]
+    python cleanup_misplaced.py [opzioni]
+    \end{lstlisting}
+    
+    Le opzioni disponibili sono:
+    \begin{itemize}
+        \item \path{--selected-dir=DIR}: specifica la directory delle matrici selezionate (default: \path{selezionate/});
+        \item \path{--results-dir=DIR}: specifica la directory dei risultati (default: \path{risultati_auto/}).
+    \end{itemize}
+    
+    Il funzionamento prevede:
+    \begin{itemize}
+        \item Scansiona ricorsivamente \path{[--selected-dir]/benchmarks1/} e \path{[--selected-dir]/benchmarks2/};
+        \item Identifica tutti i file con estensione \path{.mhs};
+        \item Sposta automaticamente tutti i file \path{.mhs} trovati nelle posizioni sbagliate alla directory corretta, 
+        sovrascrivendo eventuali conflitti senza richiedere conferma;
+        \item Mostra un riepilogo finale con numero di file spostati ed eventuali errori.
+    \end{itemize}
+    Questo script è particolarmente utile dopo esecuzioni batch interrotte o se si sospetta che 
+    alcuni file siano stati salvati nella posizione errata. Previene inconsistenze nei risultati 
+    e facilita la pulizia del workspace.
+    
+    \subsubsection{Esempi di utilizzo}
+    Pulizia standard (directory di default):
+    \begin{lstlisting}[language=bash]
+    python cleanup_misplaced.py
+    \end{lstlisting}
+    Pulizia su directory personalizzate, per esempio partendo dalla cartella \path{esempio_matrix} per arrivare alla cartella \path{esempio_mhs}:
+    \begin{lstlisting}[language=bash]
+    python cleanup_misplaced.py --selected-dir esempio_matrix --results-dir esempio_mhs
+    \end{lstlisting}
+    
+    \subsection{Riprocessamento matrici mancanti (\texttt{reprocess\_missing.py})}
+    
+    Durante elaborazioni batch molto lunghe, alcune matrici potrebbero non essere state processate 
+    a causa di timeout globali, crash o interruzioni manuali. Invece di rieseguire l'intero batch 
+    (potenzialmente molto costoso), questo script identifica e riprocessa solo le matrici mancanti. 
+    
+    Funzionalità:
+    \begin{itemize}
+        \item Confronta le matrici nella cartella con le matrici selezionate con i file \path{.mhs} nella 
+        cartella dei risultati appropriata (\path{risultati_auto/}, \path{risultati_parallel/} o 
+        \path{risultati_serial/});
+        \item Identifica quali matrici non hanno un file di output corrispondente;
+        \item Mostra un elenco dettagliato delle matrici mancanti organizzato per sottocartella
+        e procede direttamente al riprocessamento senza richiedere conferma;
+        \item Esegue il solver su ciascuna matrice mancante utilizzando i parametri specificati;
+        \item Verifica che il file \path{.mhs} sia stato effettivamente creato;
+        \item Mostra un riepilogo con successi e fallimenti;
+        \item In caso di errore, logga l'eccezione ma prosegue comunque con la collezione delle prestazioni.
+    \end{itemize}
+    
+    La sintassi è la seguente:
+    \begin{lstlisting}[language=bash]
+        python reprocess_missing.py [opzioni]
+    \end{lstlisting}
+    Le opzioni disponibili sono le stesse di \path{setup.py} (Sezione~\ref{sec:setup.py}). Quando invocato nel \path{setup.py}, queste sono passate in automatico allo script per garantire coerenza nei parametri di esecuzione. 
+
+    \subsubsection{Esempi di utilizzo}
+    Riprocessamento con impostazioni automatiche:
+    \begin{lstlisting}[language=bash]
+    python reprocess_missing.py
+    \end{lstlisting}
+    
+    Riprocessamento in modalità parallela forzata con monitoraggio memoria e timer di 60 secondi:
+    \begin{lstlisting}[language=bash]
+    python reprocess_missing.py --parallel --memory-monitoring --memory-threshold=90 --timeout=60
+    \end{lstlisting}
+    
+    Riprocessamento con deduplicazione globale disabilitata:
+    \begin{lstlisting}[language=bash]
+    python reprocess_missing.py --skip-global-dedup
+    \end{lstlisting}
+
+    Riprocessamento con directory personalizzate, per esempio partendo dalla cartella \path{esempio_matrix} per arrivare alla cartella \path{esempio_mhs}:
+    \begin{lstlisting}[language=bash]
+    python reprocess_missing.py --selected-dir esempio_matrix --results-dir esempio_mhs
+    \end{lstlisting}
+
+    \section{Menu interattivo (\texttt{menu.py})}
+    
+    Il menu interattivo rappresenta il punto di ingresso principale per l'utente. Offre quattro opzioni:
+    
+    \begin{enumerate}
+        \item \textbf{Eseguire una singola matrice}: permette di selezionare una matrice e configurare 
+        tutti i parametri di esecuzione in modo guidato, per poi avviare \path{run.py} con i parametri scelti;
+        \item \textbf{Eseguire il programma automatico}: avvia \path{setup.py} per selezionare le matrici dai benchmarks forniti e per l'elaborazione di quelle incluse nel catalogo;
+        \item \textbf{Informazioni e aiuto}: mostra una guida dettagliata con spiegazione di tutti i 
+        parametri e modalità di utilizzo;
+        \item \textbf{Esci}: termina il programma.
+    \end{enumerate}
+    
+    Il menu gestisce autonomamente:
+    \begin{itemize}
+        \item Elenco delle matrici disponibili nella cartella corrente;
+        \item Validazione dell'input utente;
+        \item Costruzione del comando con i parametri specificati, con traduzione degli input in flag appropriati passati agli script \path{run.py} o \path{setup.py}. Si occupa di gestire anche i parametri avanzati (timeout, modalità, monitoraggio memoria, parallelizzazione, riduzione colonne vuote, deduplicazione globale);
+        \item Esecuzione del comando e visualizzazione dell'output;
+        \item Gestione di interruzioni (solo con \path{Ctrl+C}) ed errori.
+    \end{itemize}
+
+    Per avviare il menu interattivo è necessario eseguire il seguente comando da riga di comando:
+    \begin{lstlisting}[language=bash]
+    python menu.py
+    \end{lstlisting}
+
+    \section{Formato file di input e output}
+    
+    \subsection{File di input (\texttt{.matrix})}
+    
+    Il file di input è un file testuale con estensione \path{.matrix} che contiene una matrice binaria. 
+    Il formato è:
+    \begin{itemize}
+        \item Ogni riga della matrice è su una riga del file;
+        \item Gli elementi sono separati da spazi o virgole;
+        \item I valori ammessi sono 0 e 1;
+        \item Linee vuote e commenti (iniziano con \path{;;;}) vengono ignorati.
+    \end{itemize}
+    
+    La funzione \path{parse_matrix_file(path)} in \path{utility.py} gestisce il parsing.
+    
+    \subsection{File di output (\texttt{.mhs})}
+    
+    Il file di output è un file testuale con estensione \path{.mhs} che contiene:
+    
+    \begin{enumerate}
+        \item \textbf{Intestazione commentata} (righe che iniziano con \path{;;;}):
+        \begin{itemize}
+            \item Nome del solver utilizzato (\path{mhs_solver.py} o \path{mhs_solver_parallel.py});
+            \item Informazioni sulla matrice originale ($N, M$, origine, densità, categoria);
+            \item Numero di colonne rimosse (se pre-processamento attivo) e indici delle colonne non vuote;
+            \item Livello massimo di esplorazione;
+            \item Numero totale di MHS trovati, con relativa cardinalità minima e massima;
+            \item Indicazione se l'esplorazione è stata completata o interrotta;
+            \item Indicazione sul livello in cui si è interrotta l'esplorazione;
+            \item Numero totale di ipotesi generate;
+            \item Numero di MHS trovati per livello;
+            \item Prestazioni: tempo di esecuzione (reale e CPU) e memoria utilizzata (RSS e picco).
+        \end{itemize}
+        
+        \item \textbf{Lista degli MHS trovati}:
+        \begin{itemize}
+            \item Ogni MHS è rappresentato da una riga binaria di lunghezza $M$ (colonne originali);
+            \item Il bit in posizione $i$ è 1 se la colonna $i$ appartiene all'MHS;
+            \item Gli MHS sono ordinati per cardinalità crescente.
+        \end{itemize}
+    \end{enumerate}
+    
+    Esempio di file \path{.mhs} (modalità seriale):
+    \begin{lstlisting}
+    ;;; MHS generati dal solver mhs_solver.py
+    ;;;
+    ;;; Matrice di input:
+    ;;; |N| (righe) = 3
+    ;;; |M| (colonne) = 5
+    ;;; Matrice ridotta |M'| (colonne non vuote) = 5
+    ;;; Livello massimo di esplorazione = 5
+    ;;;
+    ;;; Numero di MHS trovati = 3
+    ;;; Cardinalita' minima = 1, Cardinalita' massima = 2
+    ;;; Completato? True
+    ;;; Timeout imposto = 10 secondi
+    ;;; Tempo trascorso = 0.0021 secondi
+    ;;;
+    ;;; Numero ipotesi generate per livello:
+    ;;;   Livello 0: 5
+    ;;;   Livello 1: 6
+    ;;;   Livello 2: 1
+    ;;;   Livello 3: 0
+    ;;;
+    ;;; MHS trovati per livello:
+    ;;;   Livello 1: 1 MHS
+    ;;;   Livello 2: 2 MHS
+    ;;;   Totale: 3 MHS
+    ;;;
+    ;;; Prestazioni:
+    ;;;   Tempo reale = 0.0031 s
+    ;;;   CPU time totale = 0.0000 s
+    ;;;     CPU time singoli worker: non presente (esecuzione seriale)
+    ;;;   Memoria RSS = 20380.0 KB
+    ;;;   Picco memoria = 18.0 KB
+    ;;;
+    0 0 0 1 0
+    1 0 1 0 0
+    0 1 1 0 0
+    \end{lstlisting}
+    
+    In modalità parallela, la sezione prestazioni include dettagli aggiuntivi sui tempi CPU dei worker:
+    \begin{lstlisting}
+    ;;; Prestazioni:
+    ;;;   Tempo reale = 1.2345 s
+    ;;;   CPU time totale = 4.5678 s
+    ;;;     CPU time master = 0.1234 s
+    ;;;     CPU time worker (totale) = 4.4444 s
+    ;;;     CPU time worker (max) = 0.9876 s
+    ;;;     CPU time worker (media) = 0.7407 s
+    ;;;     Numero worker = 6
+    ;;;     CPU time singoli worker per livello:
+    ;;;       Livello 1: [0.1234, 0.2345, 0.3456, 0.4567, 0.5678, 0.6789] s
+    ;;;   Memoria RSS = 51234.0 KB
+    ;;;   Picco memoria = 67890.0 KB
+    \end{lstlisting}
+    La funzione \path{write_mhs_output()} in \path{utility.py} gestisce la generazione del file.
+
+\end{document}

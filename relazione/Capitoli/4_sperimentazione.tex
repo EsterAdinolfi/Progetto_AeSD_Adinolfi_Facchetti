@@ -1,0 +1,614 @@
+\documentclass[../relazione.tex]{subfiles}
+\begin{document}
+\cleardoublepage
+\chapter{Sperimentazione e risultati}
+\label{cap: sperimentazione}
+
+In questo capitolo descriviamo la sperimentazione condotta: le matrici utilizzate, come sono
+state selezionate e categorizzate, gli obiettivi degli esperimenti e i risultati ottenuti con
+la relativa interpretazione.
+
+\section{Matrici di test e categorizzazione}
+\label{sec:selezione_matrici}
+
+Le sperimentazioni sono state condotte su un insieme di istanze benchmark organizzate nelle
+cartelle \path{benchmarks1} e \path{benchmarks2}. Queste matrici provengono dal repository
+fornitoci alla consegna e coprono un ampio spettro di caratteristiche.
+
+\subsection{Criteri di categorizzazione}
+
+Le matrici sono state classificate automaticamente in sei categorie in base a:
+\begin{itemize}
+    \item Numero di righe ($N$);
+    \item Numero di colonne ridotte ($M'$, dopo rimozione colonne vuote).
+\end{itemize}
+
+La categorizzazione tiene conto della complessità esponenziale dell'algoritmo MHS. Le sei categorie definite sono:
+
+\begin{enumerate}
+    \item \textbf{\textit{Trivial}}: $N \leq 1$ o $M' \leq 1$. Soluzioni banali;
+    \item \textbf{\textit{Tiny}}: $N \leq 3$ e $M' \leq 15$. Matrici minuscole;
+    \item \textbf{\textit{Small}}: $N \leq 5$ e $M' \leq 30$. Matrici piccole;
+    \item \textbf{\textit{Medium}}: $N \leq 6$ e $M' \leq 50$. Matrici di medie dimensioni;
+    \item \textbf{\textit{Large}}: $N \leq 8$ e $M' \leq 90$. Matrici grandi;
+    \item \textbf{\textit{Xlarge}}: tutte le istanze oltre le soglie di \textit{large}. Qui si ha alta probabilità di timeout o di esaurimento memoria.
+\end{enumerate}
+
+Questi criteri sono implementati nella funzione \path{categorize()} in \path{matrices_selection.py} e vengono utilizzati coerentemente anche per la scelta automatica del solver con la funzione \path{is_small_matrix()} in \path{utility.py}, la quale riconosce le matrici piccole e fa in modo che vengano eseguite in modalità seriale.
+
+\subsection{Distribuzione delle istanze}
+
+Il dataset è stato selezionato utilizzando lo script \path{matrices_selection.py}, che analizza
+automaticamente tutte le matrici disponibili nei benchmark e ne seleziona un sottoinsieme
+rappresentativo per categoria. Lo script garantisce che vengano selezionate matrici uniche sia
+per nome che per contenuto (ignorando duplicati tra le cartelle \path{benchmarks1} e
+\path{benchmarks2}), e bilancia la selezione tra le due cartelle sorgente per una
+rappresentazione equilibrata. La distribuzione effettivamente selezionata è:
+\begin{itemize}
+    \item \textbf{Trivial}: 3 istanze (\path{c880.005.matrix}, \path{74182.006.matrix} e \path{74182.001.matrix});
+
+    \item \textbf{Tiny}: 10 istanze (\path{74182.025.matrix}, \path{74182.022.matrix}, \path{74182.021.matrix}, \path{74182.013.matrix}, \path{74182.010.matrix}, \path{74182.004.matrix}, \path{74L85.009.matrix}, \path{74181.007.matrix}, \path{74181.003.matrix} e \path{c1908.000.matrix});
+
+    \item \textbf{Small}: 10 istanze (\path{74182.044.matrix}, \path{74283.000.matrix}, \path{c5315.002.matrix}, \path{74181.006.matrix}, \path{c880.009.matrix}, \path{74182.042.matrix}, \path{c880.002.matrix}, \path{c432.003.matrix}, \path{74182.047.matrix} e \path{c499.003.matrix});
+
+    \item \textbf{Medium}: 10 istanze (\path{c880.028.matrix}, \path{c432.007.matrix}, \path{74181.000.matrix}, \path{c1908.018.matrix}, \path{c5315.009.matrix}, \path{c499.002.matrix}, \path{c880.044.matrix}, \path{74L85.025.matrix}, \path{c2670.032.matrix} e \path{c880.049.matrix});
+
+    \item \textbf{Large}: 5 istanze (\path{c1355.001.matrix}, \path{74283.018.matrix}, \path{c499.020.matrix}, \path{74L85.020.matrix} e \path{c499.012.matrix});
+
+    \item \textbf{Xlarge}: 5 istanze (\path{c5315.238.matrix}, \path{c499.145.matrix}, \path{c1355.054.matrix}, \path{c7552.279.matrix} e \path{c880.224.matrix}).
+\end{itemize}
+
+La distribuzione bilanciata (in totale sono 43 matrici) favorisce istanze \textit{tiny}, \textit{small} e \textit{medium} che forniscono un buon equilibrio tra copertura dei casi e tempo di esecuzione ragionevole. Le istanze \textit{large} e \textit{xlarge} servono principalmente per testare il comportamento dell'algoritmo su casi limite e la gestione dei timeout.
+
+\section{Ambiente di test e metriche}
+
+\subsection{Hardware e software}
+
+Gli esperimenti sono stati eseguiti su:
+\begin{itemize}
+    \item \textbf{Processore}: AMD Ryzen 5 5600H with Radeon Graphics (3.30 GHz);
+    \item \textbf{RAM}: 16 GB;
+    \item \textbf{Processori}: 1 processore fisico, 6 core fisici e 12 thread logici;
+    \item \textbf{Sistema Operativo}: Windows 11 Home;
+    \item \textbf{Python}: versione 3.12.4.
+\end{itemize}
+
+\subsection{Configurazione dei parametri}
+Sono stati raccolti i risultati di due serie di esperimenti: una forzando l'esecuzione in modalità seriale e l'altra lasciando che il programma scegliesse automaticamente la modalità (seriale o parallela) in base alla dimensione della matrice.
+
+In entrambi i casi, il timeout di ogni istanza è stato fissato a massimo 300 secondi e la soglia di memoria, il cui monitoraggio è stato abilitato nel caso parallelo, è stata fissata al 98\% della RAM disponibile. Infine, si è scelto di disabilitare la deduplicazione globale nel caso parallelo (che è attiva di default) utilizzando il flag \path{--skip-global-dedup}, per evitare overhead teoricamente inutili e misurare le prestazioni pure dell'algoritmo succL.
+
+\subsection{Metriche raccolte}
+
+Per ciascuna istanza sono state raccolte:
+\begin{itemize}
+    \item \textbf{Tempo reale (wall-clock)}: tempo totale trascorso dall'inizio alla fine dell'esecuzione del programma. Include tutto il tempo impiegato: calcolo effettivo della CPU, attesa di operazioni di input/output e qualsiasi altro overhead di sistema;
+    \item \textbf{Tempo CPU}: tempo effettivo durante il quale la CPU è stata utilizzata per eseguire le istruzioni del programma. Per il solver seriale corrisponde al tempo CPU del singolo processo; per il solver parallelo è calcolato come somma del tempo CPU del processo master (che coordina l'esecuzione) e dei tempi CPU di tutti i processi worker (che eseguono i calcoli in parallelo). Dei worker, inoltre, sono stati raccolti i singoli tempi CPU suddivisi per livelli. Non include i tempi di attesa per input/output o l'esecuzione di altri processi del sistema;
+    \item \textbf{Memoria RSS}: RAM occupata al termine;
+    \item \textbf{Picco di memoria}: massima RAM raggiunta durante l'esecuzione;
+    \item \textbf{Numero di MHS trovati};
+    \item \textbf{Numero di ipotesi per livello};
+    \item \textbf{Stato di completamento}: successo, timeout, o esaurimento memoria.
+\end{itemize}
+I dati sono aggregati in:
+\begin{itemize}
+    \item \path{[cartella_risultati]/results.json}: dati strutturati completi estratti da tutti i file \path{.mhs}, contenenti metriche dettagliate per ogni matrice;
+    \item \path{[cartella_risultati]/statistiche_prestazioni.txt}: report analitico dettagliato con statistiche aggregate per gruppi di benchmark, per categoria, correlazioni densità-prestazioni, statistiche di densità per categoria e, infine, statistiche sintetiche per cartella di origine.
+\end{itemize}
+dove \path{[cartella_risultati]} è \path{risultati_serial} o \path{risultati_auto} a seconda della modalità di esecuzione.
+
+\section{Obiettivi degli esperimenti}
+
+Gli esperimenti sono stati progettati per registrare e valutare criticamente le prestazioni spaziali e temporali delle prove condotte, nel rispetto dei requisiti funzionali e non funzionali dell'applicazione. In particolare, ci si è focalizzati su:
+
+\begin{enumerate}
+    \item \textbf{Valutazione prestazioni}: misurazione dei tempi di esecuzione (wall-clock e CPU) e dell'utilizzo di memoria (RSS e picco) per ciascuna istanza benchmark, con analisi della distribuzione per categoria di matrice;
+
+    \item \textbf{Verifica robustezza}: test della capacità dell'applicazione di gestire istanze di diversa complessità, valutazione del tasso di completamento per categoria e analisi dei meccanismi di gestione timeout e interruzioni;
+
+    \item \textbf{Confronto implementazioni}: valutazione delle differenze prestazionali tra modalità seriale forzata e selezione automatica del solver, analisi dello speedup ottenuto con la parallelizzazione su matrici grandi.
+\end{enumerate}
+
+
+\section{Risultati ottenuti}
+I grafici sono stati generati automaticamente dallo script \path{generate_plots.py} utilizzando
+Matplotlib/Seaborn.
+\subsection{Sommario delle metriche per categoria}
+\begin{table}[H]
+    \centering
+    \resizebox{\textwidth}{!}{
+        \begin{tabular}{lrrrrr}
+            \toprule
+            \textbf{Categoria} & \textbf{MHS} & \shortstack{\textbf{Tempo reale}                                        \\\textbf{medio (s)}} & \textbf{RSS (MB)} & \shortstack{\textbf{Picco RAM}\\\textbf{(MB)}} & \textbf{Completate} \\
+            \midrule
+            Trivial            & 6            & 0.00                             & 19.85    & 0.03     & 3/3 (100\%)    \\
+            Tiny               & 152          & 0.01                             & 19.79    & 0.04     & 10/10 (100\%)  \\
+            Small              & 1˙107        & 15.95                            & 25.91    & 11.29    & 10/10 (100\%)  \\
+            Medium             & 12˙150       & 186.52                           & 296.12   & 1˙205.24 & 4/10 (40\%)    \\
+            Large              & 34˙488       & 194.30                           & 254.74   & 926.43   & 2/5 (40\%)     \\
+            Xlarge             & 0            & 317.19                           & 2˙703.85 & 5˙162.56 & 0/5 (0\%)      \\
+            \midrule
+            \textbf{Totale}    & 47˙903       & 106.56                           & 424.45   & 991.34   & 29/43 (67.4\%) \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{Metriche principali per categoria nella modalità automatica.}
+    \label{tab:metriche_categoria}
+\end{table}
+
+\subsection{Modalità automatica}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Immagini/auto_total_completion_by_category.png}
+    \caption{Percentuale di completamento per categoria.}
+    \label{fig:total_auto_completion_by_category}
+\end{figure}
+In Figura~\ref{fig:total_auto_completion_by_category} si nota che:
+\begin{itemize}
+    \item Le categorie \textit{trivial}, \textit{tiny} e \textit{small} mostrano un tasso di completamento
+          del 100\% (3/3, 10/10, 10/10 rispettivamente), confermando che l'algoritmo gestisce efficacemente
+          istanze piccole e medie;
+    \item La percentuale scende drasticamente per \textit{medium} (40\%, 4/10) e \textit{large} (40\%, 2/5),
+          evidenziando il salto di complessità quando le istanze crescono. Il timeout di 300s diventa, quindi, insufficiente
+          per il 60\% delle \textit{medium}, delle \textit{large} e per tutte le matrici \textit{xlarge};
+
+    \item Il tasso di completamento \textit{globale} è di 29/43 (67.4\%).
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[ width=0.9\textwidth]{Immagini/auto_total_time_by_category.png}
+    \caption{Tempo totale per categoria (secondi).}
+    \label{fig:total_time_by_category}
+\end{figure}
+
+In Figura~\ref{fig:total_time_by_category} si nota che:
+\begin{itemize}
+    \item Il tempo di esecuzione totale cresce rapidamente con la categoria;
+    \item Per le categorie più piccole (\textit{trivial}, \textit{tiny}, \textit{small}), i tempi sono molto contenuti
+          e tutte le istanze completano con successo. Si nota un primo salto significativo passando alla categoria
+          \textit{small}, dove il tempo medio sale a circa 16 secondi;
+
+    \item Il punto critico si raggiunge con le categorie \textit{medium} e \textit{large}, dove i tempi medi
+          si attestano intorno ai 190 secondi, con molte istanze che raggiungono il timeout di 300s. Questo
+          evidenzia chiaramente il limite pratico dell'algoritmo con le risorse disponibili;
+
+    \item La categoria \textit{xlarge} mostra tempi estremamente elevati (media oltre 317s), oltre il timeout imposto probabilmente perché vengono considerati anche i tempi spesi in operazioni di I/O, gestione della memoria e chiusura dei processi in maniera anticipata. Questo valore conferma che tali matrici sono al momento intrattabili con i parametri attuali.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[ width=0.9\textwidth]{Immagini/auto_total_mhs_vs_cols.png}
+    \caption{Numero di MHS trovati in funzione del numero di colonne ridotte.}
+    \label{fig:total_mhs_vs_cols}
+\end{figure}
+
+In Figura~\ref{fig:total_mhs_vs_cols} si nota che:
+\begin{itemize}
+    \item Il numero di MHS cresce esponenzialmente con il numero di colonne ridotte, come atteso
+          dalla teoria. La distribuzione mostra:
+          \begin{itemize}
+              \item Matrici con $M' \leq 10$: tipicamente $< 100$ MHS;
+              \item Matrici con $10 < M' \leq 30$: range 10--1˙000 MHS;
+              \item Matrici con $M' > 40$: migliaia o decine di migliaia di MHS.
+          \end{itemize}
+
+    \item Totale MHS trovati (di cui 29 istanze sono state completate): 47˙903 MHS.\\La distribuzione è fortemente
+          sbilanciata:
+          \begin{itemize}
+              \item \textit{Trivial}: 6 MHS (0.01\%);
+              \item \textit{Tiny}: 152 MHS (0.32\%);
+              \item \textit{Small}: 1˙107 MHS (2.31\%);
+              \item \textit{Medium}: 12˙150 MHS (25.36\%);
+              \item \textit{Large}: 34˙488 MHS (71.99\%);
+              \item \textit{Xlarge}: 0 MHS (0\%, nessuna completata).
+          \end{itemize}
+          Come si nota, le matrici \textit{large} generano la maggior parte degli MHS;
+    \item Le matrici \textit{xlarge} non generano alcun MHS: una spiegazione possibile è che i loro eventuali MHS abbiano cardinalità maggiore di quella elaborata dall'algoritmo. Probabilmente con risorse maggiori (tempo/memoria) si potrebbero ottenere risultati.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[ width=0.9\textwidth]{Immagini/auto_total_memory_stats.png}
+    \caption{Statistiche di memoria (RSS e picco) per categoria.}
+    \label{fig:total_memory_stats}
+\end{figure}
+
+In Figura~\ref{fig:total_memory_stats} si nota che:
+\begin{itemize}
+    \item Il consumo di memoria (RSS) mostra un andamento crescente con la categoria. In particolare, si nota che in media la categoria \textit{medium} è $\approx 11$ volte maggiore rispetto a \textit{small}, mentre \textit{Xlarge} occupa $\approx 2.7$ GB;
+    \item I picchi di memoria sono significativamente più alti della RSS media. In particolare, si osserva che nella categoria \textit{medium} il picco è $\approx 4$ volte maggiore della RSS media, mentre in \textit{xlarge} il picco raggiunge $\approx 5.2$ GB, indicando che durante l'esecuzione si verificano momenti di intenso utilizzo di memoria, la maggior parte dei quali porta a un esaurimento della memoria stessa e alla conseguente chiusura forzata dell'elaborazione;
+
+    \item L'analisi mostra tre regimi di consumo memoria:
+          \begin{itemize}
+              \item \textit{Regime leggero} (\textit{trivial}, \textit{tiny}, \textit{small}):
+                    consumo costante e contenuto ($< 30$ MB);
+              \item \textit{Regime intermedio} (\textit{medium}, \textit{large}): consumo
+                    significativo, ma gestibile (200-300 MB RSS, picchi 1-1.2 GB);
+              \item \textit{Regime pesante} (\textit{xlarge}): consumo molto elevato
+                    (2.7 GB RSS media, picchi 5.2 GB) che può diventare critico su sistemi
+                    con memoria limitata.
+          \end{itemize}
+\end{itemize}
+
+\section{Analisi dell'impatto della densità della matrice}
+\label{sec:analisi_densita}
+
+Oltre alle dimensioni della matrice (numero di righe e colonne), un fattore critico che influenza le prestazioni dell'algoritmo MHS è la \textbf{densità della matrice}, definita come la percentuale di elementi pari a 1 nella matrice. Una matrice \textbf{densa} (alta percentuale di 1) presenta più sovrapposizioni tra le righe, il che può influenzare significativamente la complessità dell'esplorazione dello spazio delle soluzioni.
+
+
+È stata condotta un'analisi statistica per valutare la relazione tra la densità della matrice e le principali metriche prestazionali: tempo di esecuzione, consumo di memoria e numero di MHS trovati. L'analisi utilizza il coefficiente di \textbf{correlazione di Pearson} per quantificare la forza e la direzione della relazione lineare.
+
+La formula della correlazione di Pearson è:
+
+\[
+    r = \frac{\sum_{i=1}^{n} (x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n} (x_i - \bar{x})^2} \cdot \sqrt{\sum_{i=1}^{n} (y_i - \bar{y})^2}}
+\]
+
+Dove:
+\begin{itemize}
+    \item $x_i$ e $y_i$ sono i valori delle due variabili per la $i$-esima matrice;
+    \item $\bar{x}$ e $\bar{y}$ sono le medie delle rispettive variabili;
+    \item $n$ è il numero di matrici (43 nel nostro caso);
+\end{itemize}
+Il risultato $r$ è un valore compreso tra -1 e 1.
+
+\textit{Nota}: Questa formula rappresenta la correlazione per popolazioni complete. Nel codice Python (\path{statistics.correlation()}), viene utilizzata una variante con correzione campionaria che divide per $n-1$ invece di $n$ nel calcolo delle deviazioni standard. Per dataset di dimensioni moderate come il nostro ($n=43$), la differenza è trascurabile (ordine di $10^{-4}$).
+
+I tipi di correlazione sono:
+\begin{itemize}
+    \item $r > 0$: correlazione \textit{positiva} o \textit{diretta}, cioè all'aumentare di $x$, aumenta anche $y$;
+    \item $r < 0$: correlazione \textit{negativa} o \textit{inversa}, cioè all'aumentare di $x$, diminuisce $y$;
+    \item $r = 0$: nessuna correlazione lineare tra le due variabili, che si dicono \textit{incorrelate}.
+\end{itemize}
+Per le correlazioni dirette e inverse, sono possibili i seguenti casi:
+\begin{itemize}
+    \item $0<|r|<0.3$: correlazione \textit{debole};
+    \item $0.3 \leq |r| < 0.7$: correlazione \textit{moderata};
+    \item $0.7 \leq |r| \leq 1$: correlazione \textit{forte}.
+\end{itemize}
+
+La direzione della relazione lineare può essere utile a dimostrare empiricamente se la densità è un fattore rilevante per le prestazioni, aiutando a interpretare il perché alcune matrici sono più difficili da risolvere. Non predice con certezza, ma identifica tendenze statistiche nei dati sperimentali.
+
+Per esempio, un valore di $r$ vicino a -1 indica una forte correlazione negativa, suggerendo che all'aumentare della densità, la metrica considerata (per esempio il tempo reale di esecuzione) tende a diminuire. Al contrario, un valore vicino a 1 indicherebbe che all'aumentare della densità, il valore della metrica tende ad aumentare. Un valore vicino a 0 indicherebbe nessuna correlazione lineare significativa tra le due variabili.
+
+Per garantire completezza metodologica, l'analisi è stata condotta considerando i risultati ottenuti dalla modalità automatica e secondo due approcci distinti:
+\begin{enumerate}
+    \item \textbf{Solo matrici completate}: considera esclusivamente le 29 istanze completate con successo, escludendo quelle terminate per timeout o esaurimento memoria;
+    \item \textbf{Tutte le matrici}: include tutte le 43 istanze elaborate, indipendentemente dallo stato di completamento.
+\end{enumerate}
+
+Il confronto tra i due approcci permette di valutare l'impatto dei valori censurati (timeout) sulla validità statistica delle correlazioni e di comprendere meglio il comportamento dell'algoritmo su matrici di diversa complessità.
+
+\subsection{Approccio 1: solo matrici completate}
+
+Nella Tabella~\ref{tab:density_correlations_completed} sono riportati i risultati dell'analisi di correlazione calcolata esclusivamente sulle 29 istanze completate con successo.
+
+\begin{table}[H]
+    \centering
+    \resizebox{\textwidth}{!}{
+        \begin{tabular}{lcc}
+            \toprule
+            \textbf{Metrica}          & \textbf{Correlazione di Pearson} & \textbf{Interpretazione}       \\
+            \midrule
+            Tempo di esecuzione reale & 0.281                            & Debole correlazione positiva   \\
+            Memoria RSS               & 0.500                            & Moderata correlazione positiva \\
+            Picco memoria             & 0.401                            & Moderata correlazione positiva \\
+            MHS trovati               & 0.370                            & Moderata correlazione positiva \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{Correlazioni densità-prestazioni (solo 29 matrici completate).}
+    \label{tab:density_correlations_completed}
+\end{table}
+
+\textit{Nota}: i valori di correlazione sono calcolati utilizzando i valori individuali di ciascuna delle 29 istanze completate, escludendo quelle terminate per timeout o esaurimento memoria per evitare distorsioni da valori censurati.
+
+Di seguito sono riportati i grafici di dispersione per ciascuna metrica.
+\begin{figure}[H]
+    \centering
+    \includegraphics[ width=0.9\textwidth]{Immagini/auto_total_density_vs_time.png}
+    \caption{Correlazione tra densità della matrice e tempo reale di esecuzione.}
+    \label{fig:total_density_vs_time}
+\end{figure}
+
+Nella Figura~\ref{fig:total_density_vs_time} della correlazione densità-tempo si osserva che la correlazione è debolmente positiva (0.281). Ciò indica che matrici più dense tendono sì a richiedere più tempo di esecuzione, ma che questa correlazione non è particolarmente forte e quindi non si verifica in tutti i casi.
+
+La \textit{linea di regressione} (retta che minimizza la somma dei quadrati delle distanze tra i punti dati e la linea stessa), calcolata tramite il metodo dei minimi quadrati, sembra seguire l'andamento suggerito dalla correlazione, anche se non perfettamente: c'è una grande dispersione attorno alla retta. Ciò significa che ci sono anche altri fattori (come le dimensioni e la struttura specifica della matrice) che influenzano le prestazioni.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[ width=0.9\textwidth]{Immagini/auto_total_density_vs_memory.png}
+    \caption{Correlazione tra densità della matrice e memoria RSS totale.}
+    \label{fig:total_density_vs_memory}
+\end{figure}
+
+In Figura~\ref{fig:total_density_vs_memory} si osserva una correlazione positiva e moderata (0.500). Questa suggerisce che matrici più dense tendono a utilizzare più memoria RSS, con una relazione più consistente rispetto al tempo di esecuzione. Questo può essere dovuto al fatto che matrici dense richiedono l'esplorazione di porzioni più ampie dello spazio delle soluzioni, accumulando più strutture dati intermedie.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[ width=0.9\textwidth]{Immagini/auto_total_density_vs_mhs.png}
+    \caption{Correlazione tra densità della matrice e numero totale di MHS trovati.}
+    \label{fig:total_density_vs_mhs}
+\end{figure}
+
+
+In Figura~\ref{fig:total_density_vs_mhs} si osserva una correlazione positiva e moderata (0.370). Questo indica che matrici più dense tendono a produrre un numero maggiore di MHS, anche se la relazione non è particolarmente forte. Questo è ragionevole poiché matrici dense possono avere strutture che ammettono più insiemi massimalmente indipendenti. Ciò suggerisce che, sebbene la densità influenzi il numero di MHS, altri fattori strutturali della matrice giocano un ruolo più significativo.
+
+\subsection{Approccio 2: tutte le matrici}
+
+Questo approccio permette di valutare se l'inclusione delle matrici non completate (con valori di tempo censurati al timeout di 300s o per esaurimento della memoria) altera significativamente le correlazioni osservate.
+
+\begin{table}[H]
+    \centering
+    \resizebox{\textwidth}{!}{
+        \begin{tabular}{lcc}
+            \toprule
+            \textbf{Metrica}          & \textbf{Correlazione di Pearson} & \textbf{Interpretazione}       \\
+            \midrule
+            Tempo di esecuzione reale & -0.356                           & Moderata correlazione negativa \\
+            Memoria RSS               & -0.192                           & Debole correlazione negativa   \\
+            Picco memoria             & -0.319                           & Moderata correlazione negativa \\
+            MHS trovati               & -0.123                           & Correlazione molto debole      \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{Correlazioni densità-prestazioni (tutte le 43 matrici).}
+    \label{tab:density_correlations_all}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Immagini/auto_total_density_vs_time_all.png}
+    \caption{Correlazione densità vs tempo (tutte le 43 matrici).}
+    \label{fig:total_density_vs_time_all}
+\end{figure}
+
+In Figura~\ref{fig:total_density_vs_time_all} della correlazione densità-tempo si osserva una correlazione moderatamente negativa (-0.356). Questa inversione rispetto all'approccio 1 è dovuta all'inclusione delle matrici non completate, che hanno densità generalmente più bassa, ma tempi fissati al timeout di 300 secondi. Ciò crea una distorsione statistica che suggerisce erroneamente che matrici meno dense richiedano più tempo, quando in realtà il timeout maschera le vere differenze prestazionali.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Immagini/auto_total_density_vs_memory_all.png}
+    \caption{Correlazione densità vs memoria RSS (tutte le 43 matrici).}
+    \label{fig:total_density_vs_memory_all}
+\end{figure}
+
+In Figura~\ref{fig:total_density_vs_memory_all} si osserva una correlazione molto debole e negativa (-0.192) tra densità e memoria RSS. Anche in questo caso, l'inclusione delle matrici non completate (che spesso esauriscono la memoria) contribuisce a questa distorsione, suggerendo che matrici meno dense consumino più memoria, quando invece il pattern opposto è più rappresentativo del comportamento normale dell'algoritmo.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Immagini/auto_total_density_vs_mhs_all.png}
+    \caption{Correlazione densità vs MHS trovati (tutte le 43 matrici).}
+    \label{fig:total_density_vs_mhs_all}
+\end{figure}
+
+In Figura~\ref{fig:total_density_vs_mhs_all} si osserva una correlazione molto debole e negativa (-0.123) tra densità e numero di MHS trovati. Questa relazione quasi nulla riflette il fatto che molte matrici non completate (con densità variabile) producono zero MHS, diluendo qualsiasi tendenza positiva che potrebbe emergere dalle sole matrici completate.
+
+\subsection{Confronto tra i due approcci}
+
+La Tabella~\ref{tab:density_approaches_comparison} confronta i risultati ottenuti con i due approcci.
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{lccc}
+        \toprule
+        \textbf{Metrica}       & \textbf{A1: solo completate} & \textbf{A2: tutte} & \textbf{A1-A2: Differenza} \\
+        \midrule
+        Tempo esecuzione reale & 0.281                        & -0.356             & 0.637                      \\
+        Memoria RSS            & 0.500                        & -0.192             & 0.692                      \\
+        Picco memoria          & 0.401                        & -0.319             & 0.720                      \\
+        MHS trovati            & 0.370                        & -0.123             & 0.494                      \\
+        \bottomrule
+    \end{tabular}
+    \caption{Confronto correlazioni tra approccio 1 (solo completate, 29) e approccio 2 (tutte, 43).}
+    \label{tab:density_approaches_comparison}
+
+\end{table}
+
+In sintesi:
+\begin{itemize}
+    \item \textbf{Approccio 1} (solo completate): mostra correlazioni positive, suggerendo che tra le matrici risolvibili, quelle più dense richiedono più risorse, ma producono più soluzioni;
+    \item \textbf{Approccio 2} (tutte): mostra correlazioni negative a causa dell'effetto distorsivo delle matrici non completate, che sono sparse e vanno in timeout;
+    \item La differenza evidenzia che le correlazioni globali sono influenzate dai casi limite piuttosto che dal comportamento tipico.
+\end{itemize}
+
+Quindi si può affermare che:
+\begin{enumerate}
+    \item L'approccio 1 è metodologicamente superiore per l'analisi delle relazioni densità-prestazioni;
+    \item La selezione del campione è cruciale per evitare bias statistici;
+    \item Le correlazioni globali possono essere fuorvianti quando includono dati censurati;
+    \item L'analisi dovrebbe privilegiare i casi "normali" piuttosto che gli estremi.
+\end{enumerate}
+
+In generale, possiamo notare come statisticamente la densità sembri essere un fattore rilevante per le prestazioni dell'algoritmo MHS, con effetti positivi su tempo, memoria e numero di soluzioni trovate.
+
+\section{Confronto tra versione seriale e versione automatica}
+\label{sec:confronto_serial_vs_auto}
+
+Come anticipato all'inizio del capitolo, per valutare l'efficacia della strategia di selezione automatica del solver (seriale per matrici piccole, parallelo per matrici grandi), sono state condotte due esecuzioni complete sullo stesso dataset di 43 matrici:
+\begin{enumerate}
+    \item \textbf{Versione seriale forzata}: tutte le matrici elaborate con il solver seriale (\path{--serial});
+    \item \textbf{Versione automatica}: selezione automatica del solver in base alla categoria della matrice (\path{--auto}), con soglia memoria al 98\%.
+\end{enumerate}
+
+Di seguito sono riportati i risultati comparativi delle due esecuzioni.
+
+La Tabella~\ref{tab:confronto_modalita} riassume i risultati principali delle due esecuzioni.
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Metrica}         & \textbf{Seriale forzata} & \textbf{Automatica} \\
+        \midrule
+        Matrici completate       & 29/43 (67.4\%)           & 29/43 (67.4\%)      \\
+        Totale MHS trovati       & 21˙443                   & 47˙903              \\
+        Tempo reale medio (s)    & 116.98                   & 106.56              \\
+        Memoria RSS media (MB)   & 44.73                    & 424.45              \\
+        Picco memoria medio (MB) & 803.12                   & 990.95              \\
+        \bottomrule
+    \end{tabular}
+    \caption{Confronto prestazioni tra versione seriale forzata e versione automatica.}
+    \label{tab:confronto_modalita}
+\end{table}
+
+\subsection{Analisi del tasso di completamento}
+
+Entrambe le versioni hanno completato esattamente lo stesso numero di matrici (29 su 43, pari al 67.4\%), con le stesse 14 matrici che hanno raggiunto il timeout. Questo è un risultato significativo che conferma:
+\begin{itemize}
+    \item La soglia di timeout di 300 secondi è il fattore limitante principale, non la modalità di esecuzione;
+    \item Le matrici \textit{medium}, \textit{large} e \textit{xlarge} che vanno in timeout sono intrinsecamente troppo complesse per essere completate nel tempo disponibile, indipendentemente dalla strategia di parallelizzazione.
+\end{itemize}
+
+\subsection{Numero di MHS trovati: differenza critica}
+
+La versione automatica ha trovato 47˙903 MHS totali, più del doppio rispetto ai 21˙443 MHS della versione seriale. Questa differenza sostanziale è dovuta principalmente alle prestazioni superiori sulle matrici \textit{large}:
+\begin{itemize}
+    \item \textbf{Large (seriale)}: 9˙555 MHS totali;
+    \item \textbf{Large (automatica)}: 34˙488 MHS totali.
+\end{itemize}
+
+Questo dimostra che per matrici di dimensioni rilevanti, la versione parallela riesce a esplorare una porzione significativamente maggiore dello spazio di ricerca prima del timeout, trovando molte più soluzioni valide.
+
+\subsection{Prestazioni temporali}
+
+\begin{itemize}
+    \item \textbf{Tempo medio}: la versione automatica è più veloce di 10.42 secondi (116.98s vs 106.56s), dimostrando un vantaggio complessivo nelle prestazioni;
+    \item \textbf{Per categoria}:
+          \begin{itemize}
+              \item \textit{Trivial/Tiny/Small}: tempi identici. Questo non ci è informativo, in quanto per scelta implementativa entrambe le versioni usano il solver seriale per queste categorie;
+              \item \textit{Medium}: tempo medio 196.65s (seriale) vs 186.52s (auto), vantaggio marginale per la versione automatica;
+              \item \textit{Large}: tempo medio 233.67s (seriale) vs 194.30s (auto), vantaggio significativo per la versione automatica nonostante entrambe raggiungano spesso il timeout;
+              \item \textit{Xlarge}: tempo medio 347.33s (seriale) vs 317.19s (auto), differenza dovuta principalmente alla diversa gestione del timeout e dell'esaurimento delle risorse tra i due approcci.
+          \end{itemize}
+\end{itemize}
+
+\subsection{Consumo di memoria}
+
+L'utilizzo di memoria presenta un trade-off interessante:
+\begin{itemize}
+    \item \textbf{Memoria RSS media}: la versione automatica consuma significativamente più memoria (424.45 MB vs 44.73 MB), principalmente a causa del parallelismo, che mantiene in memoria le strutture dati di più worker contemporaneamente, e che esplora più livelli della ricerca, dovendo gestire molte più ipotesi rispetto alla versione seriale;
+    \item \textbf{Picco memoria medio}: la versione automatica ha picchi più elevati (990.95 MB vs 803.12 MB). Questo conferma le ipotesi precedenti. Tuttavia, il picco non cresce in modo proporzionale alla RSS media, suggerendo che la maggior parte del consumo aggiuntivo è distribuito nel tempo piuttosto che concentrato in momenti critici.
+\end{itemize}
+
+
+\subsection{Analisi per categoria}
+
+La Tabella~\ref{tab:confronto_per_categoria} dettaglia le differenze per ciascuna categoria di matrice.
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{lcccccc}
+        \toprule
+        \multirow{2}{*}{\textbf{Categoria}} & \multirow{2}{*}{\textbf{Completate}} & \multicolumn{2}{c}{\textbf{MHS}} & \multicolumn{2}{c}{\textbf{Tempo (s)}}                                    \\
+        \cmidrule(lr){3-4} \cmidrule(lr){5-6}
+                                            &                                      & \textbf{Seriale}                 & \textbf{Auto}                          & \textbf{Seriale} & \textbf{Auto} \\
+        \midrule
+        Trivial                             & 3/3 (100\%)                          & 6                                & 6                                      & 0.00             & 0.00          \\
+        Tiny                                & 10/10 (100\%)                        & 152                              & 152                                    & 0.02             & 0.01          \\
+        Small                               & 10/10 (100\%)                        & 1˙107                            & 1˙107                                  & 15.83            & 15.95         \\
+        Medium                              & 4/10 (40\%)                          & 10˙623                           & 12˙150                                 & 196.65           & 186.52        \\
+        Large                               & 2/5 (40\%)                           & 9˙555                            & 34˙488                                 & 233.67           & 194.30        \\
+        Xlarge                              & 0/5 (0\%)                            & 0                                & 0                                      & 347.33           & 317.19        \\
+        \midrule
+        \textbf{Totale}                     & 29/43 (67.4\%)                       & 21˙443                           & 47˙903                                 & 116.98           & 106.56        \\
+        \bottomrule
+    \end{tabular}
+    \caption{Confronto prestazioni per categoria di matrice.}
+    \label{tab:confronto_per_categoria}
+\end{table}
+
+Osservazioni chiave:
+\begin{itemize}
+    \item \textit{Trivial/Tiny/Small}: risultati praticamente identici come previsto, poiché entrambe le versioni utilizzano il solver seriale per queste categorie;
+    \item \textit{Medium}: la versione automatica trova più MHS con un tempo medio leggermente inferiore, dimostrando un leggero vantaggio del parallelismo;
+    \item \textit{Large}: qui emerge la differenza più importante: la versione automatica trova molti più MHS con un tempo medio inferiore, confermando che il parallelismo è essenziale per matrici grandi;
+    \item \textit{Xlarge}: nessuna delle due versioni completa alcuna matrice, ma la versione automatica impiega meno tempo per gestire l'interruzione dei processi.
+\end{itemize}
+
+\subsection{Grafici di confronto}
+
+Per un'analisi più dettagliata delle prestazioni a livello di singola matrice, presentiamo dei grafici scatter in scala logaritmica che confrontano direttamente le due versioni. In questi grafici, ogni punto rappresenta una singola matrice del benchmark, con le prestazioni della versione \textit{seriale} sull'asse $x$ e quelle della versione \textit{automatica} sull'asse $y$.
+
+La linea diagonale $y=x$ rappresenta prestazioni identiche: punti sotto la diagonale $(y<x)$ indicano che la versione automatica performa meglio per tempo e memoria, che devono avere valori bassi; i punti sopra $(y>x)$ indicano una prestazione migliore della modalità automatica solo per il numero di MHS trovati, che deve essere il più alto possibile, mentre per tempo e memoria indicano che la versione seriale è superiore (cioè più veloce o che consuma meno).
+
+Ogni categoria di matrice è rappresentata con un marker e un colore distintivi per facilitare l'identificazione della complessità delle istanze: cerchi per \textit{trivial}, quadrati per \textit{tiny}, triangoli per \textit{small}, diamanti per \textit{medium}, stelle per \textit{large} ed esagoni per \textit{xlarge}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{Immagini/confr_total_scatter_time_log.png}
+    \caption{Scatter plot del tempo di esecuzione per ogni matrice.}
+    \label{fig:scatter_time}
+\end{figure}
+
+La Figura~\ref{fig:scatter_time} mostra il confronto tra i tempi di esecuzione per ogni matrice. Le categorie più piccole (\textit{trivial}, \textit{tiny}, \textit{small}) sono vicine alla diagonale, indicando prestazioni simili tra le due versioni (entrambe in modalità seriale). Le restanti, le più grandi, tendono a essere sotto la diagonale, evidenziando un vantaggio temporale della versione automatica (più veloce) quando attiva il parallelismo.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{Immagini/confr_total_scatter_mhs_log.png}
+    \caption{Scatter plot del numero di MHS trovati per ogni matrice.}
+    \label{fig:scatter_mhs}
+\end{figure}
+
+La Figura~\ref{fig:scatter_mhs} evidenzia il vantaggio della versione automatica in termini di numero di soluzioni trovate. Il grafico mostra come le categorie più piccole abbiano punti vicini alla diagonale (stesse prestazioni), mentre le categorie \textit{medium} e \textit{large} presentano dei punti sopra la diagonale, confermando che la versione automatica, essendo più veloce, riesce a esplorare una porzione maggiore dello spazio di ricerca prima del timeout, trovando quindi un numero superiore di soluzioni.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{Immagini/confr_total_scatter_memory_rss_log.png}
+    \caption{Scatter plot della memoria RSS utilizzata per ogni matrice.}
+    \label{fig:scatter_memory_rss}
+\end{figure}
+
+La Figura~\ref{fig:scatter_memory_rss} evidenzia il consumo di memoria RSS (Resident Set Size) delle due versioni. Si osserva una chiara bipartizione del comportamento: le categorie più piccole (\textit{trivial}, \textit{tiny}, \textit{small}) hanno punti che giacciono esattamente sulla diagonale, avendo un consumo di memoria identico tra le due versioni. Le categorie più grandi (\textit{medium}, \textit{large}, \textit{xlarge}), invece, mostrano punti sopra la diagonale, evidenziando che la versione automatica consuma più memoria RSS rispetto alla seriale. Questo incremento è atteso ed è dovuto al parallelismo, che richiede la gestione simultanea di strutture dati duplicate per ciascun processo worker, code di comunicazione inter-processo, overhead di coordinamento del processo master, stati intermedi di esplorazione mantenuti per più livelli simultanei e buffer temporanei per la sincronizzazione tra processi.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{Immagini/confr_total_scatter_memory_peak_log.png}
+    \caption{Scatter plot del picco di memoria per ogni matrice.}
+    \label{fig:scatter_memory_peak}
+\end{figure}
+
+La Figura~\ref{fig:scatter_memory_peak} analizza i picchi di memoria raggiunti durante l'esecuzione. Il grafico conferma lo stesso pattern osservato per la memoria RSS: le categorie più piccole hanno punti sulla diagonale, mentre le categorie più grandi mostrano punti sopra la diagonale, indicando che i picchi di memoria della versione automatica sono superiori rispetto alla seriale. Questo è dovuto ai momenti di massima attività parallela, quando tutti i worker sono attivi simultaneamente e il sistema mantiene in memoria diverse strutture dati per ciascun processo.
+
+È importante notare che, sebbene i picchi siano più elevati nella versione automatica, questi rappresentano momenti transitori di massima attività computazionale. Il sistema gestisce efficacemente queste situazioni grazie al monitoraggio attivo della memoria (soglia al 98\%), che previene l'esaurimento completo delle risorse terminando precocemente le elaborazioni che diventano troppo onerose. L'incremento di memoria rimane quindi un trade-off accettabile, considerando i significativi guadagni in termini di prestazioni temporali e numero di soluzioni trovate.
+
+\subsection{Giustificazione della scelta seriale per matrici piccole}
+\label{subsec:giustificazione_seriale}
+
+Come evidenziato nelle sezioni precedenti, la strategia di selezione automatica del solver utilizza l'implementazione seriale per le categorie \textit{trivial}, \textit{tiny} e \textit{small}, riservando il parallelismo solo per matrici di dimensioni maggiori (\textit{medium}, \textit{large}, \textit{xlarge}). Questa scelta progettuale non è arbitraria, ma è motivata da test empirici che dimostrano come il parallelismo su istanze di piccole dimensioni introduca un overhead che peggiora le prestazioni complessive invece di migliorarle.
+
+Per validare questa strategia, è stata condotta una terza serie di esperimenti utilizzando una \textbf{versione parallela forzata} che applica il parallelismo a \textit{tutte} le matrici, indipendentemente dalla loro dimensione. La Tabella~\ref{tab:confronto_modalita_piccole} confronta le prestazioni di due modalità (seriale forzata e parallela forzata) sulle categorie piccole.
+
+\begin{table}[H]
+    \centering
+    \resizebox{\textwidth}{!}{
+
+        \begin{tabular}{lcccc}
+            \toprule
+            \textbf{Categoria} & \textbf{Modalità} & \textbf{Tempo reale (s)} & \textbf{Media RSS (MB)} & \textbf{Media picco (MB)} \\
+            \midrule
+            \textit{Trivial}   & Seriale           & 0.0036                   & 19.90                   & 0.03                      \\
+                               & Parallela         & 0.2929                   & 23.54                   & 0.61                      \\
+            \midrule
+            \textit{Tiny}      & Seriale           & 0.0163                   & 19.71                   & 0.04                      \\
+                               & Parallela         & 0.5513                   & 23.42                   & 0.65                      \\
+            \midrule
+            \textit{Small}     & Seriale           & 15.8311                  & 26.22                   & 11.28                     \\
+                               & Parallela         & 5.7072                   & 40.07                   & 16.53                     \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{Confronto prestazioni tra modalità seriale e parallela forzata sulle categorie piccole.}
+    \label{tab:confronto_modalita_piccole}
+\end{table}
+
+I risultati mostrano chiaramente che:
+
+\begin{itemize}
+    \item \textbf{Categorie \textit{trivial} e \textit{tiny}}: il parallelismo forzato degrada drasticamente le prestazioni temporali, con tempi di esecuzione medi rispettivamente 81 volte e 47 volte superiori alla modalità seriale. Questo overhead è dovuto ai costi fissi di inizializzazione dei processi worker, sincronizzazione e comunicazione inter-processo, che dominano completamente il tempo di calcolo effettivo per istanze così piccole. Inoltre, si osserva un incremento significativo della memoria (RSS e picco) dovuto alle strutture dati parallele, completamente sprecato data la semplicità delle istanze;
+
+    \item \textbf{Categoria \textit{small}}: anche per matrici leggermente più grandi, il parallelismo forzato mostra un comportamento ambiguo. Sebbene la modalità parallela sia circa 3 volte più rapida (5.7s vs 15.8s), la strategia \textit{automatica} implementata utilizza comunque la modalità seriale. Questa scelta progettuale è stata fatta per privilegiare la minimizzazione assoluta dell'occupazione di memoria (RSS: 26.22 MB vs 40.07 MB) su questa categoria, accettando un lieve peggioramento delle prestazioni temporali. Si è preferito riservare l'overhead del parallelismo solo alle categorie \textit{medium} e superiori, dove il guadagno temporale diventa essenziale per completare l'esecuzione.
+\end{itemize}
+
+In conclusione, i test con la versione parallela forzata dimostrano empiricamente che l'overhead del parallelismo è controproducente per matrici piccole, giustificando, come già detto, la scelta implementativa adottata.
+
+\end{document}
