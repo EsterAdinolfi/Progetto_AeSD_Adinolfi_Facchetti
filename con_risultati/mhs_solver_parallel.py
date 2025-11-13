@@ -1466,6 +1466,10 @@ def main(argv):
             level_interrupted = emergency_data_obj['level']
             print(f"Recuperato livello di interruzione: {level_interrupted}.")
             
+        # Recupera anche i tempi CPU dei worker
+        if 'worker_cpu_times' in emergency_data_obj and emergency_data_obj['worker_cpu_times']:
+            worker_cpu_times = emergency_data_obj['worker_cpu_times']
+            
     except TimeoutError as e:
         print("\nTimeout raggiunto.")
         if len(e.args) > 0 and isinstance(e.args[0], tuple) and len(e.args[0]) >= 1:
@@ -1482,6 +1486,10 @@ def main(argv):
                 stats_per_level = e.args[0][2]
             if len(e.args[0]) >= 4:
                 mhs_per_level = e.args[0][3]
+            # Recupera anche i tempi CPU dei worker dai dati di emergenza
+            emergency_data_obj = get_emergency_data()
+            if 'worker_cpu_times' in emergency_data_obj and emergency_data_obj['worker_cpu_times']:
+                worker_cpu_times = emergency_data_obj['worker_cpu_times']
             print(f"Recuperati {len(found_mhs)} MHS parziali dal timeout.")
     except MemoryError:
         print(f"MEMORIA INSUFFICIENTE.")
@@ -1507,6 +1515,10 @@ def main(argv):
         if 'level' in emergency_data_obj and emergency_data_obj['level'] > 0:
             level_interrupted = emergency_data_obj['level']
             print(f"Livello di interruzione: {level_interrupted}")
+        
+        # Recupera anche i tempi CPU dei worker
+        if 'worker_cpu_times' in emergency_data_obj and emergency_data_obj['worker_cpu_times']:
+            worker_cpu_times = emergency_data_obj['worker_cpu_times']
         
         print(f"Procedura di recupero completata. Salvataggio in corso...")
         
