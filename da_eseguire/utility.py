@@ -196,9 +196,14 @@ def get_column_vectors(rows: List[List[int]]) -> Tuple[List[int], List[int]]:
             col_map.append(j)
     return col_vectors, col_map
 
+# non usata
 def check_is_solution(h: Hypothesis, num_rows: int) -> bool:
     """
-    Verifica se un'ipotesi è un Minimal Hitting Set (copre tutte le righe).
+    CHECK(h): verifica se h è una soluzione (copre tutte le righe).
+    
+    CHECK:1 - return vector(h) == 2^|N| - 1 (tutte le righe coperte)
+    
+    Nel codice: confronta vector con la maschera che rappresenta tutte le righe coperte.
     
     Args:
         h: ipotesi da verificare
@@ -207,26 +212,37 @@ def check_is_solution(h: Hypothesis, num_rows: int) -> bool:
     Returns:
         True se h copre tutte le righe
     """
-    all_rows_mask = (1 << num_rows) - 1
-    return h.vector == all_rows_mask
+    all_rows_mask = (1 << num_rows) - 1  # CHECK:1 - maschera per tutte le righe
+    return h.vector == all_rows_mask  # CHECK:1 - confronto per copertura completa
 
+# non usata
 def set_fields(h: Hypothesis, col_vectors: List[int]):
     """
-    Calcola il vector (righe coperte) per un'ipotesi data.
+    SET_FIELDS(h): imposta i campi aggiuntivi dell'ipotesi h.
+    
+    SET_FIELDS:1-5 - Se h è un immediato successore di ipotesi 0, vector(h) ← colonna della matrice corrispondente al singleton h,
+    altrimenti vector(h) ← vettore con tutti i valori |N| a zero.
+    
+    Nel codice: calcola vector come OR bit a bit delle colonne selezionate in h.
     
     Args:
         h: ipotesi di cui calcolare il vector
         col_vectors: vettori colonne
     """
-    v = 0
+    v = 0  # Inizializza vector a 0 (SET_FIELDS:5)
     for i in range(h.num_cols):
-        if (h.bin >> (h.num_cols - 1 - i)) & 1:
-            v |= col_vectors[i]
+        if (h.bin >> (h.num_cols - 1 - i)) & 1:  # Se colonna i è selezionata
+            v |= col_vectors[i]  # OR bit a bit con vettore colonna (SET_FIELDS:3)
     h.vector = v
 
+# non usata
 def propagate(parent: Hypothesis, child: Hypothesis, added_col_idx: int, col_vectors: List[int]):
     """
-    Propaga il vector dal padre al figlio aggiungendo una colonna.
+    PROPAGATE(h, h'): propaga caratteristiche dal padre h al figlio h'.
+    
+    PROPAGATE:1-2 - vector(h') ← vector(h') V vector(h) (bitwise OR)
+    
+    Nel codice: aggiunge il vettore della colonna aggiunta al vector esistente.
     
     Args:
         parent: ipotesi padre
@@ -234,8 +250,7 @@ def propagate(parent: Hypothesis, child: Hypothesis, added_col_idx: int, col_vec
         added_col_idx: indice della colonna aggiunta
         col_vectors: vettori colonne
     """
-    child.vector = parent.vector | col_vectors[added_col_idx]
-
+    child.vector = parent.vector | col_vectors[added_col_idx]  # PROPAGATE:2 - bitwise OR
 
 def get_leftmost_one_position(bin_val, num_cols):
     """Posizione del bit 1 più significativo"""
@@ -244,17 +259,15 @@ def get_leftmost_one_position(bin_val, num_cols):
     bit_length = bin_val.bit_length()
     return num_cols - bit_length
 
-
 def generate_succ_left(hypothesis, col_vectors, found_mhs_sets=None, col_map=None, timeout=None, start_time=None):
     """
-    Genera successori secondo la strategia succL(h).
+    GENERATE_CHILDREN(h): genera i figli secondo la strategia succL.
     
-    IMPORTANTE: succL garantisce che ogni ipotesi sia generata esattamente una volta
-    durante l'esplorazione BFS. Questo significa che NON ci possono essere duplicati
-    tra i figli generati da questa funzione per la stessa ipotesi padre.
+    GENERATE_CHILDREN:1-2 - children ← <>
+    GENERATE_CHILDREN:3-9 - Se h = 0 (ipotesi vuota), genera singoletti per ogni colonna
+    GENERATE_CHILDREN:10-25 - Altrimenti, genera successori aggiungendo bit 1 a sinistra del leftmost-1
     
-    Strategia: per un'ipotesi h con leftmost-1 in posizione k, genera tutti i figli
-    ottenuti aggiungendo un bit 1 in posizione j < k (a sinistra del leftmost-1).
+    Nel codice: implementa succL(h) che garantisce generazione unica di ogni ipotesi.
     
     Args:
         hypothesis: ipotesi padre
@@ -267,34 +280,39 @@ def generate_succ_left(hypothesis, col_vectors, found_mhs_sets=None, col_map=Non
     Returns:
         Lista di ipotesi figlie (oggetti Hypothesis)
     """
-    children = []
+    children = []  # GENERATE_CHILDREN:2 - children ← <>
     num_cols = hypothesis.num_cols
     current_vector = hypothesis.vector
-    base_bin = hypothesis.bin
+    base_bin = hypothesis.bin # rapp binaria dell'ipotesi padre
     
     leftmost_one_pos = get_leftmost_one_position(base_bin, num_cols)
     
-    if leftmost_one_pos == -1:
-        for j in range(num_cols):
+    if leftmost_one_pos == -1:  # GENERATE_CHILDREN:3 - if h = 0
+        for j in range(num_cols):  # GENERATE_CHILDREN:4 - for i ← 1 to |M|
             if timeout and start_time and (time.time() - start_time) >= timeout:
                 raise TimeoutError("Timeout durante generazione singoletti")
             
-            new_bin = 1 << (num_cols - 1 - j)
-            new_vector = col_vectors[j]
+            new_bin = 1 << (num_cols - 1 - j)  # GENERATE_CHILDREN:5-6 - bin(h') ← bin(h); bin(h')[i] ← 1
+            new_vector = col_vectors[j]  # SET_FIELDS per singleton
             
             new_h = Hypothesis(new_bin, num_cols)
             new_h.vector = new_vector
             new_h.card = 1
-            children.append(new_h)
-        return children
+            children.append(new_h)  # GENERATE_CHILDREN:8 - APPEND(children, h')
+        return children  # GENERATE_CHILDREN:9 - return children
     
-    for j in range(leftmost_one_pos):
+    # GENERATE_CHILDREN:10-25 - Caso generale → semplificato per uso di succL
+    for j in range(leftmost_one_pos):  # GENERATE_CHILDREN:11 - for i ← 1 to (LM1(h)-1)
         if timeout and start_time and j % 10 == 0 and (time.time() - start_time) >= timeout:
             raise TimeoutError("Timeout durante generazione successori succL")
         
-        if not ((base_bin >> (num_cols - 1 - j)) & 1):
-            new_bin = base_bin | (1 << (num_cols - 1 - j))
+        if not ((base_bin >> (num_cols - 1 - j)) & 1):  # GENERATE_CHILDREN:12 - if not already set
+            # | è l'operatore bitwise OR in Python
+            # imposta il bit j a 1 e j corrisponde di volta in volta alle posizioni dei bit a sx del bit 1 più significativo (LM1) del padre.
+            new_bin = base_bin | (1 << (num_cols - 1 - j))  # GENERATE_CHILDREN:12-13 - bin(h') ← bin(h); bin(h')[i] ← 1
             
+            # controllo pruning per minimalità → aggiunta rispetto allo pseudocodice
+            # elimina soluzioni non minimali basate su MHS già trovati
             if found_mhs_sets and col_map:
                 child_cols = set()
                 for col_idx in range(num_cols):
@@ -303,18 +321,19 @@ def generate_succ_left(hypothesis, col_vectors, found_mhs_sets=None, col_map=Non
                 
                 contains_mhs = any(mhs_set.issubset(child_cols) for mhs_set in found_mhs_sets)
                 if contains_mhs:
-                    continue
+                    continue  # Se contiene un MHS già trovato, skippa: la soluzione esaminata non può essere minimale
             
-            new_vector = current_vector | col_vectors[j]
+            new_vector = current_vector | col_vectors[j]  # PROPAGATE implicitamente
             
             new_h = Hypothesis(new_bin, num_cols)
             new_h.vector = new_vector
             new_h.card = hypothesis.card + 1
-            children.append(new_h)
+            children.append(new_h)  # GENERATE_CHILDREN:25 - APPEND(children, h')
     
-    return children
+    return children  # GENERATE_CHILDREN:26 - return children
 
 lock = threading.Lock()
+# non usata
 def generate_children_threadsafe(h, current, col_vectors, all_hypotheses_keys, timeout=None, start_time=None):
     """
     Genera figli in modo thread-safe (usato in contesti multi-thread).
@@ -347,6 +366,7 @@ def generate_children_threadsafe(h, current, col_vectors, all_hypotheses_keys, t
                 children.append(c)
     return children
 
+# non usata
 def process_batch(args):
     """
     Elabora un batch di ipotesi (usato per parallelizzazione con multiprocessing).

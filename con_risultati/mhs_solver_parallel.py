@@ -82,17 +82,23 @@ def worker_process_batch_bins(args):
     """
     Elabora un batch di ipotesi in parallelo, generando figli tramite succL.
     
-    IMPORTANTE: Ogni worker genera figli usando generate_succ_left, che implementa
-    la strategia succL. Questa garantisce che ogni ipotesi sia generata esattamente
-    una volta, quindi non ci possono essere duplicati ENTRO lo stesso batch.
-    Tuttavia, in caso di bug possono esserci duplicati, quindi può servire una deduplicazione globale.
+    PARALLELIZZAZIONE: Ogni worker esegue GENERATE_CHILDREN su un sottoinsieme
+    di ipotesi del livello corrente (batch). Questa funzione implementa il loop
+    parallelo di MAIN:8-19, dove ogni worker processa un batch di ipotesi h.
+    
+    GENERATE_CHILDREN (MAIN:13,19): Chiama generate_succ_left per generare i
+    figli di ogni ipotesi h del batch usando la strategia succL. Questa garantisce
+    che ogni ipotesi sia generata esattamente una volta DENTRO il batch.
+    
+    IMPORTANTE: Tra batch diversi potrebbero esserci duplicati in edge-cases,
+    quindi può servire una deduplicazione globale alla fine del livello.
     
     Args:
         args: tupla (batch_bins, timeout, start_time, found_mhs_sets)
             - batch_bins: lista di valori binari delle ipotesi da elaborare
             - timeout: timeout in secondi
             - start_time: timestamp di inizio algoritmo
-            - found_mhs_sets: set di MHS già trovati (per pruning)
+            - found_mhs_sets: set di MHS già trovati (per pruning minimalità)
             
     Returns:
         Tupla (children_tuples, mhs_local, timeout_flag, worker_cpu_time)
@@ -145,24 +151,30 @@ def worker_process_batch_bins(args):
                         worker_cpu_time = time.process_time() - worker_start_cpu
                         return children_tuples, mhs_local, True, worker_cpu_time
 
+                # Ricostruzione vector dell'ipotesi h (SET_FIELDS)
+                # SET_FIELDS:1-5 - calcola vector(h) come OR bitwise delle colonne selezionate
                 vector = 0
                 card = bin_val.bit_count() if hasattr(bin_val, 'bit_count') else bin(bin_val).count('1')
                 
+                # Itera sui bit di bin_val per trovare colonne selezionate
                 bit_pos = 0
                 temp = bin_val
                 while temp:
-                    if temp & 1:
-                        vector |= col_vectors[num_cols - 1 - bit_pos]
+                    if temp & 1:  # Se colonna bit_pos è selezionata
+                        vector |= col_vectors[num_cols - 1 - bit_pos]  # OR con vettore colonna (SET_FIELDS:3, PROPAGATE:2)
                     temp >>= 1
                     bit_pos += 1
                 
                 if should_check_iteration(i, 100, offset=idx):
                     _, mem_percent, _, _, cleaned = check_memory_with_cleanup(memory_limit_percent=90, force_gc=True)
                 
+                # Crea ipotesi temporanea per generazione figli
                 fake_h = Hypothesis(bin_val, num_cols)
                 fake_h.vector = vector
                 fake_h.card = card
                 
+                # GENERATE_CHILDREN(h) - genera i figli usando strategia succL (MAIN:13,19)
+                # GENERATE_CHILDREN:1-26 - implementato in generate_succ_left
                 new_children = generate_succ_left(fake_h, col_vectors, 
                                                  found_mhs_sets=found_mhs_sets_frozenset,
                                                  col_map=col_map)
@@ -201,6 +213,14 @@ def worker_process_batch_bins(args):
 def dedup_bitset(all_children, seen_bitset, num_cols, timeout=None, start_time=None, dedup_start_time=None, memory_limit_percent=100):
     """
     Deduplicazione figli usando bitset (per livelli piccoli/medi).
+    
+    NOTA ALGORITMO: La deduplicazione globale NON è presente nello pseudocodice
+    teorico perché con succL non dovrebbero esserci duplicati. Tuttavia,
+    nella parallelizzazione possono verificarsi edge-cases, quindi questa
+    funzione rimuove eventuali duplicati tra batch diversi.
+    
+    STRATEGIA BITSET: Usa un array di bit per tracciare ipotesi già viste.
+    Adatta per livelli piccoli/medi (num_cols <= 24) dove 2^num_cols è gestibile.
     
     Args:
         all_children: lista di tuple (bin, vector, card)
@@ -260,8 +280,12 @@ def dedup_sorted(all_children, timeout=None, start_time=None, dedup_start_time=N
     """
     Deduplicazione figli usando ordinamento (per livelli grandi).
     
-    NOTA: Strategia per grandi volumi quando bitset non è applicabile.
-    Ordina per bin value e rimuove consecutivi identici.
+    NOTA ALGORITMO: Deduplicazione non presente nello pseudocodice teorico.
+    Necessaria solo per gestire edge-cases della parallelizzazione.
+    
+    STRATEGIA SORTED: Ordina le ipotesi per bin value, poi rimuove duplicati
+    consecutivi in un singolo passaggio. Adatta per livelli medi (24 < num_cols <= 128)
+    dove bitset non è applicabile ma il volume è gestibile.
     
     Args:
         all_children: lista di tuple (bin, vector, card)
@@ -341,7 +365,27 @@ def dedup_sorted(all_children, timeout=None, start_time=None, dedup_start_time=N
     return unique, duplicates_found
 
 def dedup_distributed(all_children, num_processes, timeout=None, start_time=None, dedup_start_time=None, memory_limit_percent=100):
-    """Deduplicazione distribuita"""
+    """
+    Deduplicazione distribuita (per livelli molto grandi).
+    
+    NOTA ALGORITMO: Deduplicazione non presente nello pseudocodice teorico.
+    Necessaria solo per gestire edge-cases della parallelizzazione.
+    
+    STRATEGIA DISTRIBUTED: Partiziona le ipotesi in bucket (usando hash modulo),
+    poi deduplica ogni bucket separatamente. Adatta per livelli molto grandi
+    (num_cols > 128) dove sorted richiederebbe troppa memoria.
+    
+    Args:
+        all_children: lista di tuple (bin, vector, card)
+        num_processes: numero di bucket per partizionamento
+        timeout: timeout in secondi
+        start_time: timestamp inizio
+        dedup_start_time: timestamp inizio deduplicazione
+        memory_limit_percent: soglia memoria percentuale
+        
+    Returns:
+        Tupla (unique, duplicates_found)
+    """
     print(f"    Partizionamento in {num_processes} bucket...")
     partition_start = time.time()
     
@@ -444,15 +488,30 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                          batch_size=None, num_processes=None, memory_limit_percent=100,
                          skip_global_dedup=False):
     """
-    Algoritmo parallelo per il calcolo dei Minimal Hitting Sets.
+    Algoritmo PARALLELO per il calcolo dei Minimal Hitting Sets (MHS).
     
-    Esplora lo spazio per livelli (BFS) distribuendo l'elaborazione tra worker paralleli.
+    Implementa lo pseudocodice MAIN:1-22 con PARALLELIZZAZIONE per livelli.
     
-    STRATEGIA PARALLELIZZAZIONE:
-    - Ogni livello k viene suddiviso in batch di ipotesi
-    - Ogni batch viene assegnato a un worker che genera i figli tramite succL
-    - in caso di bug possono esserci duplicati => possibile deduplicazione globale alla fine del livello
-    - Deduplicazione: bitset (livelli piccoli), ordinamento (livelli medi), distribuita (livelli grandi)
+    STRUTTURA ALGORITMO (seguendo MAIN):
+    MAIN:2-5  - Inizializzazione: ho ← 0, current ← <ho>, Delta ← <>
+    MAIN:6-21 - Loop repeat per esplorazione livelli BFS
+    MAIN:7    - next ← <> (ipotesi livello successivo)
+    MAIN:8    - for each h in current (PARALLELIZZATO su worker)
+    MAIN:9-11 - CHECK(h): se h è soluzione, APPEND(Delta, h)
+    MAIN:13,19- GENERATE_CHILDREN(h): genera figli con succL (nei worker)
+    MAIN:20   - current ← next (passa al livello successivo)
+    MAIN:21   - until current = <> (termina se nessun figlio)
+    MAIN:22   - return Delta (restituisce MHS trovati)
+    
+    PARALLELIZZAZIONE:
+    - Ogni livello k viene suddiviso in BATCH di ipotesi
+    - Ogni batch viene assegnato a un WORKER che esegue:
+      * CHECK(h) per ogni h del batch
+      * GENERATE_CHILDREN(h) per ogni h non-MHS usando succL
+    - Raccolta risultati: i figli di tutti i worker formano next
+    - Deduplicazione globale: rimuove eventuali duplicati tra batch
+      (non necessaria teoricamente con succL, ma utile per edge-cases)
+      * Strategie: bitset (piccoli), sorted (medi), distributed (grandi)
     
     Args:
         col_vectors: vettori colonne (bitmask righe)
@@ -588,10 +647,11 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
         
     gc.collect()
 
-    found_mhs = []
-    stats_per_level = {}
-    mhs_per_level = {}
-    found_mhs_sets = set()
+    # MAIN:5 - Delta ← <> (sequenza soluzioni trovate)
+    found_mhs = []  # Delta: lista di MHS trovati (colonne, cardinalità)
+    stats_per_level = {}  # Statistiche per livello (numero ipotesi generate)
+    mhs_per_level = {}  # MHS trovati per livello
+    found_mhs_sets = set()  # Set per pruning: evita duplicati e sovra-insiemi
     max_level_reached = 0
     
     all_worker_cpu_times = []
@@ -612,8 +672,10 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
     else:
         print(f"Deduplicazione globale: ATTIVA (strategia: {dedup_mode})")
 
-    h0 = (0, 0, 0)
-    current_level = [h0]
+    # MAIN:2-4 - Inizializzazione con ipotesi vuota
+    # ho ← 0 (MAIN:2), SET_FIELDS(ho) (MAIN:3), current ← <ho> (MAIN:4)
+    h0 = (0, 0, 0)  # (bin, vector, card) - ipotesi vuota
+    current_level = [h0]  # current: sequenza ipotesi livello corrente (MAIN:4)
     stats_per_level[0] = 1
 
     if num_processes is None:
@@ -630,8 +692,9 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
     last_timeout_check = time.time()
 
     try:
-        # coordinamento dell'esplorazione dei livelli BFS
-        for level in range(0, max_level + 1):
+        # MAIN:6-21 - repeat loop: coordinamento esplorazione livelli BFS
+        # Ogni iterazione processa un livello k, generando le ipotesi del livello k+1
+        for level in range(0, max_level + 1):  # repeat (MAIN:6)
             # Controllo unificato COMPLETO (timeout + interruzione + memoria)
             current_time = time.time()
             check_result = check_all_loop_conditions(
@@ -690,9 +753,12 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                 print("Nessuna ipotesi rimasta.")
                 break
 
-            all_rows_mask = (1 << num_rows) - 1
-            current_level_non_mhs = []
+            # Maschera per CHECK(h): tutte le righe coperte
+            all_rows_mask = (1 << num_rows) - 1  # CHECK:2 - 2^|N| - 1
+            current_level_non_mhs = []  # Ipotesi non-MHS da passare ai worker
             
+            # MAIN:8 - for each h in current (controllo soluzioni PRIMA dei worker)
+            # Separa MHS da non-MHS: solo i non-MHS vanno ai worker per generare figli
             for bin_val, vector, card in current_level:
                 if timeout:
                     elapsed = time.time() - start_time
@@ -700,23 +766,32 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                         print(f"\nTimeout durante controllo MHS")
                         raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
                 
-                if vector == all_rows_mask:
+                # MAIN:9 - if CHECK(h) then
+                # CHECK:2-3 - verifica se vector(h) copre tutte le righe
+                if vector == all_rows_mask:  # CHECK(h): tutte le righe coperte?
+                    # Estrae indici colonne originali da bin_val
                     mhs_cols = [col_map[j] for j in range(num_cols) if (bin_val >> (num_cols - 1 - j)) & 1]
                     mhs_cols_set = frozenset(mhs_cols)
                     
-                    found_mhs.append((mhs_cols, card))
-                    found_mhs_sets.add(mhs_cols_set)
+                    # MAIN:10 - APPEND(Delta, h)
+                    found_mhs.append((mhs_cols, card))  # APPEND(Delta, h) (MAIN:10)
+                    found_mhs_sets.add(mhs_cols_set)  # Per pruning
                     if card not in mhs_per_level:
                         mhs_per_level[card] = 0
                     mhs_per_level[card] += 1
+                    # MAIN:11 - remove h from current (implicito: h non va ai worker)
                 else:
+                    # MAIN:12-19 - else: h non è MHS, genera figli
+                    # h va ai worker per GENERATE_CHILDREN (MAIN:13,19)
                     current_level_non_mhs.append((bin_val, vector, card))
             
             current_level = current_level_non_mhs
             
+            # MAIN:21 - until current = <>
+            # Se current_level è vuoto dopo aver rimosso gli MHS, termina
             if not current_level:
                 print(f"Tutte le ipotesi del livello {level} erano MHS, nessun figlio da generare.")
-                break
+                break  # until current = <> (MAIN:21)
 
             batch_start_time = time.time()
             print(f"\n  Preparazione batches per {len(current_level)} ipotesi...")
@@ -825,9 +900,14 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
                     raise MemoryError(f"Memoria critica prima del batch: {mem_percent_after:.1f}%")
 
+            # Prepara snapshot MHS per pruning nei worker
             found_mhs_snapshot = [m for m, _ in found_mhs]
             task_args = [(b, timeout, start_time, found_mhs_snapshot) for b in batches]
 
+            # PARALLELIZZAZIONE: MAIN:8-19 distribuito su worker
+            # Ogni worker esegue for each h in batch:
+            #   - CHECK(h) (MAIN:9)
+            #   - GENERATE_CHILDREN(h) (MAIN:13,19)
             async_res = pool.map_async(worker_process_batch_bins, task_args)
 
             status_update_interval = 1.0
@@ -1035,9 +1115,12 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
             
             all_worker_cpu_times.append(worker_cpu_times)
             
+            # Elaborazione risultati worker: raccolta figli e MHS
+            # MAIN:7 - next ← <> (implicitamente in current_level)
             if skip_global_dedup:
+                # Modalità SENZA deduplicazione globale (solo ordinamento)
                 print(f"  Elaborazione risultati da {len(results)} batch (costruzione diretta, no deduplica)...")
-                current_level = []
+                current_level = []  # next ← <> (MAIN:7)
                 
                 for i, (children_tuples, mhs_local, _, worker_cpu) in enumerate(results):
                     if check_interruption(stop_event):
@@ -1071,14 +1154,17 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                         update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
                         raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
                     
+                    # MAIN:10 - APPEND(Delta, h) per MHS trovati dai worker
                     for cols, card in mhs_local:
                         fs = frozenset(cols)
                         if fs not in found_mhs_dict:
-                            found_mhs.append((cols, card))
+                            found_mhs.append((cols, card))  # APPEND(Delta, h) (MAIN:10)
                             found_mhs_dict[fs] = True
                             new_mhs_count += 1
                     
-                    current_level.extend(children_tuples)
+                    # MAIN:13,19 - APPEND(next, GENERATE_CHILDREN(h))
+                    # I figli generati dai worker vengono aggiunti a next (current_level)
+                    current_level.extend(children_tuples)  # APPEND/MERGE(next, children) (MAIN:13,19)
                     
                     if len(results) > 10 and should_check_iteration(i, 5, offset=0) and i > 0:
                         print(f"\r  Elaborazione batch: {i}/{len(results)} ({calculate_percentage(i, len(results)):.1f}%)...", end="", flush=True)
@@ -1087,15 +1173,19 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                 
                 update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
                 
+                # Ordinamento canonico: garantisce ordine decrescente per BFS
+                # MERGE implicitamente mantiene ordine (MAIN:19)
                 print(f"\n  Ordinamento di {len(current_level)} ipotesi per ordine canonico succL...")
                 sort_start = time.time()
-                current_level.sort(key=lambda x: x[0], reverse=True)
+                current_level.sort(key=lambda x: x[0], reverse=True)  # Ordine decrescente bin values
                 sort_time = time.time() - sort_start
                 print(f"  {format_completion_message('Ordinamento', sort_time, count=len(current_level))}")
                 
                 stats_per_level[level] = len(current_level)
                 
             else:
+                # Modalità CON deduplicazione globale
+                # NOTA: Non presente in pseudocodice teorico, ma utile per edge-cases parallelizzazione
                 print(f"  Elaborazione risultati da {len(results)} batch (deduplicazione incrementale)...")
                 
                 if dedup_mode == "bitset":
@@ -1118,15 +1208,16 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                             update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
                             raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
                         
-                        # Estrai MHS
+                        # MAIN:10 - APPEND(Delta, h) per MHS trovati
                         for cols, card in mhs_local:
                             fs = frozenset(cols)
                             if fs not in found_mhs_dict:
-                                found_mhs.append((cols, card))
+                                found_mhs.append((cols, card))  # APPEND(Delta, h) (MAIN:10)
                                 found_mhs_dict[fs] = True
                                 new_mhs_count += 1
                         
-                        # Deduplica incrementale con bitset
+                        # Deduplicazione incrementale con bitset (non in pseudocodice)
+                        # Rimuove duplicati tra batch per garantire unicità
                         for bin_val, vec, card in children_tuples:
                             if not seen_bitset[bin_val]:
                                 seen_bitset[bin_val] = 1
@@ -1157,15 +1248,15 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                             update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
                             raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
                         
-                        # Estrai MHS
+                        # MAIN:10 - APPEND(Delta, h) per MHS trovati
                         for cols, card in mhs_local:
                             fs = frozenset(cols)
                             if fs not in found_mhs_dict:
-                                found_mhs.append((cols, card))
+                                found_mhs.append((cols, card))  # APPEND(Delta, h) (MAIN:10)
                                 found_mhs_dict[fs] = True
                                 new_mhs_count += 1
                         
-                        # Accumula figli
+                        # Accumula figli per deduplicazione globale
                         all_children.extend(children_tuples)
                         
                         # Progresso
@@ -1198,13 +1289,16 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                         print(f"\nErrore durante deduplicazione {dedup_mode}: {type(e).__name__}")
                         raise
                 
+                # Ordinamento canonico post-deduplicazione
+                # MERGE implicitamente mantiene ordine decrescente (MAIN:19)
                 print(f"  Ordinamento di {len(unique_children)} ipotesi per ordine canonico succL...")
                 sort_start = time.time()
-                unique_children.sort(key=lambda x: x[0], reverse=True)
+                unique_children.sort(key=lambda x: x[0], reverse=True)  # Ordine decrescente bin values
                 sort_time = time.time() - sort_start
                 print(f"  {format_completion_message('Ordinamento', sort_time, count=len(unique_children))}")
                 
-                current_level = unique_children
+                # MAIN:20 - current ← next
+                current_level = unique_children  # current ← next (MAIN:20)
                 stats_per_level[level] = len(current_level)
             
             level_elapsed = time.time() - batch_start_time
@@ -1214,9 +1308,11 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
             
             max_level_reached = level
             
+            # MAIN:21 - until current = <>
+            # Se nessun figlio è stato generato, l'esplorazione è completa
             if not current_level:
                 print("Nessun figlio generato per il livello successivo, terminazione.")
-                break
+                break  # until current = <> (MAIN:21)
 
     finally:
         # NON chiamare close/join se il pool è già stato terminato (evita blocco su Windows)
@@ -1233,12 +1329,13 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
         else:
             # Pool già terminato, niente da fare
             pass
+    # MAIN:22 - return Delta
     # Prima di restituire i risultati, gli MHS trovati vengono ordinati per
     # cardinalità (numero di colonne) per fornire un output leggibile e
     # coerente con la versione seriale. Non vengono alterati i contenuti degli
     # insiemi, solo l'ordine di presentazione nei file di output.
-    found_mhs.sort(key=lambda x: x[1])
-    return found_mhs, stats_per_level, mhs_per_level, max_level_reached, all_worker_cpu_times
+    found_mhs.sort(key=lambda x: x[1])  # Ordina per cardinalità crescente
+    return found_mhs, stats_per_level, mhs_per_level, max_level_reached, all_worker_cpu_times  # return Delta (MAIN:22)
 
 # -------------------------
 def main(argv):

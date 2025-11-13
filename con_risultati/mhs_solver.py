@@ -41,114 +41,115 @@ def mhs_solver(col_vectors: List[int], col_map: List[int], num_rows: int, max_le
     Returns:
         Tupla (found_mhs, stats_per_level, mhs_per_level, max_level_reached)
     """
-    all_rows_mask = (1 << num_rows) - 1
+    all_rows_mask = (1 << num_rows) - 1  # Maschera per tutte le righe
     
-    found_mhs = []
+    found_mhs = []  # Delta: sequenza contenente tutte le soluzioni trovate finora (MAIN:5)
     found_mhs_sets = set()  # Per pruning: evita duplicati e sovra-insiemi
-    current_level_hypotheses = []
+    current_level_hypotheses = []  # current: sequenza delle ipotesi correnti (MAIN:4)
     stats_per_level = {}
     mhs_per_level = {}
     max_level_reached = 0
     
-    # Inizializzazione: ipotesi vuota (livello 0)
-    h0 = Hypothesis(0, len(col_vectors))
-    h0.vector = 0
-    current_level_hypotheses.append(h0)
+    # Inizializzazione: ipotesi vuota (livello 0) - MAIN:2-3
+    h0 = Hypothesis(0, len(col_vectors))  # ho ← 0 (MAIN:2)
+    h0.vector = 0  # SET_FIELDS(ho) - imposta vector a 0 per ipotesi vuota (SET_FIELDS:5)
+    current_level_hypotheses.append(h0)  # current ← <ho> (MAIN:4)
     stats_per_level[0] = 1
     
-    for level in range(0, max_level + 1):
-            level_start_time = time.time()
-            print(format_level_start_message(level, len(current_level_hypotheses)))
-            
-            next_level_hypotheses = []
-            current_hypotheses_to_process = current_level_hypotheses.copy()
-            last_update_time = level_start_time
-            
-            for h_idx, h in enumerate(current_hypotheses_to_process):
-                try:
-                    check_result, should_print, last_update_time, message = periodic_check_with_progress(
-                        h_idx, len(current_hypotheses_to_process), last_update_time,
-                        timeout=timeout, start_time=start_time, stop_event=stop_event,
-                        check_frequency=10,
-                        prefix=f"  Livello {level}: ",
-                        extra_info=f"MHS trovati: {len(found_mhs)}"
-                    )
-                    
-                    if should_print:
-                        print(message, end="", flush=True)
-                        last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
-                except TimeoutError:
-                    last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
-                    raise create_state_exception(TimeoutError, found_mhs, level, stats_per_level, mhs_per_level)
-                except KeyboardInterrupt:
-                    last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
-                    raise create_state_exception(KeyboardInterrupt, found_mhs, level, stats_per_level, mhs_per_level)
-                    
-                is_mhs = False
-                # Verifica se l'ipotesi è un Minimal Hitting Set
-                # (copre tutte le righe: vector == all_rows_mask)
-                if h.vector == all_rows_mask:
-                    mhs_indices = [col_map[col_idx] for col_idx in range(h.num_cols) 
-                                   if (h.bin >> (h.num_cols - 1 - col_idx)) & 1]
-                    
-                    mhs_indices_set = frozenset(mhs_indices)
-                    
-                    found_mhs.append((mhs_indices, h.card))
-                    found_mhs_sets.add(mhs_indices_set)
-                    
-                    if h.card not in mhs_per_level:
-                        mhs_per_level[h.card] = 0
-                    mhs_per_level[h.card] += 1
-                    last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
-                    is_mhs = True
+    for level in range(0, max_level + 1):  # repeat loop (MAIN:6-21)
+        level_start_time = time.time()
+        print(format_level_start_message(level, len(current_level_hypotheses)))
+        
+        next_level_hypotheses = []  # next ← <> (MAIN:7)
+        current_hypotheses_to_process = current_level_hypotheses.copy()
+        last_update_time = level_start_time
+        
+        for h_idx, h in enumerate(current_hypotheses_to_process):  # for each h in current (MAIN:8)
+            try:
+                check_result, should_print, last_update_time, message = periodic_check_with_progress(
+                    h_idx, len(current_hypotheses_to_process), last_update_time,
+                    timeout=timeout, start_time=start_time, stop_event=stop_event,
+                    check_frequency=10,
+                    prefix=f"  Livello {level}: ",
+                    extra_info=f"MHS trovati: {len(found_mhs)}"
+                )
                 
-                if not is_mhs:
-                    try:
-                        # generate_succ_left genera i figli tramite strategia succL
-                        # IMPORTANTE: succL garantisce che ogni ipotesi sia generata esattamente una volta
-                        # quindi non ci possono essere duplicati tra i figli generati
-                        children = generate_succ_left(h, col_vectors, 
-                                                     found_mhs_sets=found_mhs_sets,
-                                                     col_map=col_map,
-                                                     timeout=timeout,
-                                                     start_time=start_time)
-                        next_level_hypotheses.extend(children)
-                    except TimeoutError:
-                        print(format_timeout_message(
-                            f"generazione figli al livello {level}",
-                            processed=h_idx+1, 
-                            total=len(current_hypotheses_to_process)
-                        ))
-                        raise create_state_exception(TimeoutError, found_mhs, level, stats_per_level, mhs_per_level)
+                if should_print:
+                    print(message, end="", flush=True)
+                    last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
+            except TimeoutError:
+                last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
+                raise create_state_exception(TimeoutError, found_mhs, level, stats_per_level, mhs_per_level)
+            except KeyboardInterrupt:
+                last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
+                raise create_state_exception(KeyboardInterrupt, found_mhs, level, stats_per_level, mhs_per_level)
+                
+            is_mhs = False
+            # if CHECK(h) then (MAIN:9)
+            if h.vector == all_rows_mask:  # CHECK(h): verifica se vector non include zeri (CHECK:2-3)
+                mhs_indices = [col_map[col_idx] for col_idx in range(h.num_cols) 
+                               if (h.bin >> (h.num_cols - 1 - col_idx)) & 1]
+                
+                mhs_indices_set = frozenset(mhs_indices)
+                
+                found_mhs.append((mhs_indices, h.card))  # APPEND(Delta, h) (MAIN:10)
+                found_mhs_sets.add(mhs_indices_set)
+                
+                if h.card not in mhs_per_level:
+                    mhs_per_level[h.card] = 0
+                mhs_per_level[h.card] += 1
+                last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
+                is_mhs = True  
+                # (MAIN:11) Non rimuoviamo h da current: non necessario poiché non viene propagato (= non genera figli) e l'iterazione è su una copia => non serve rimuoverlo
             
-            stats_per_level[level] = len(next_level_hypotheses)
-            
-            # Ordinamento canonico: garantisce ordine deterministico per BFS
-            if next_level_hypotheses:
-                next_level_hypotheses.sort(key=lambda h: h.bin, reverse=True)
-            
-            level_elapsed = time.time() - level_start_time
-            total_mhs = sum(mhs_per_level.values())
-            mhs_this_level = mhs_per_level.get(level, 0)
-            print(format_level_summary(
-                level, 
-                len(current_hypotheses_to_process), 
-                level_elapsed, 
-                mhs_this_level, 
-                total_mhs
-            ))
-            
-            max_level_reached = level
-            last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
-            
-            current_level_hypotheses = next_level_hypotheses
-            
-            if not current_level_hypotheses:
-                break
+            if not is_mhs:  # else branch (MAIN:12-19)
+                try:
+                    # else if h = 0 then APPEND(next, GENERATE_CHILDREN(h)) (MAIN:13)
+                    # else if LM1(h) != 1 then ... (MAIN:14-19)
+                    # generate_succ_left genera i figli tramite strategia succL (corrisponde a GENERATE_CHILDREN)
+                    children = generate_succ_left(h, col_vectors, 
+                                                 found_mhs_sets=found_mhs_sets,
+                                                 col_map=col_map,
+                                                 timeout=timeout,
+                                                 start_time=start_time)
+                    next_level_hypotheses.extend(children)  # APPEND(next, ...) o MERGE(next, ...)
+                except TimeoutError:
+                    print(format_timeout_message(
+                        f"generazione figli al livello {level}",
+                        processed=h_idx+1, 
+                        total=len(current_hypotheses_to_process)
+                    ))
+                    raise create_state_exception(TimeoutError, found_mhs, level, stats_per_level, mhs_per_level)
+        
+        stats_per_level[level] = len(next_level_hypotheses)
+        
+        # si potrebbe omettere in quanto l'ordinamento è implicito 
+        # Ordinamento canonico: garantisce ordine deterministico per BFS (implicito in MERGE)
+        if next_level_hypotheses:
+            next_level_hypotheses.sort(key=lambda h: h.bin, reverse=True)
+        
+        level_elapsed = time.time() - level_start_time
+        total_mhs = sum(mhs_per_level.values())
+        mhs_this_level = mhs_per_level.get(level, 0)
+        print(format_level_summary(
+            level, 
+            len(current_hypotheses_to_process), 
+            level_elapsed, 
+            mhs_this_level, 
+            total_mhs
+        ))
+        
+        max_level_reached = level
+        last_saved_state = (found_mhs, level, stats_per_level, mhs_per_level)
+        
+        current_level_hypotheses = next_level_hypotheses  # current ← next (MAIN:20)
+        
+        if not current_level_hypotheses:  # until current = <> (MAIN:21)
+            break
     
-    found_mhs.sort(key=lambda x: x[1])
+    found_mhs.sort(key=lambda x: x[1])  # Ordinamento finale delle soluzioni per cardinalità crescente
     
-    return found_mhs, stats_per_level, mhs_per_level, max_level_reached
+    return found_mhs, stats_per_level, mhs_per_level, max_level_reached  # return Delta (MAIN:22)
 
 def main(argv):
     """
