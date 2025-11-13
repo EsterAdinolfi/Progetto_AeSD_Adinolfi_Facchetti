@@ -1041,6 +1041,22 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
             except multiprocessing.TimeoutError:
                 print(f"\nTimeout durante attesa risultati batch al livello {level}")
                 stop_event.set()
+                # Tenta di recuperare risultati parziali per salvare worker_cpu_times
+                partial_results = []
+                try:
+                    if async_res.ready():
+                        partial_results = async_res.get(timeout=0.1)
+                except:
+                    pass
+                # Estrai worker_cpu_times dai risultati parziali se disponibili
+                if partial_results:
+                    worker_cpu_times_partial = []
+                    for result in partial_results:
+                        if len(result) >= 4:
+                            worker_cpu_times_partial.append(result[3])
+                    if worker_cpu_times_partial:
+                        all_worker_cpu_times.append(worker_cpu_times_partial)
+                        print(f"Recuperati tempi CPU da {len(worker_cpu_times_partial)} worker completati")
                 try:
                     pool.terminate()
                     pool_already_terminated = True
@@ -1053,6 +1069,22 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
             except (AssertionError, OSError) as e:
                 print(f"\n[Errore interno multiprocessing durante recupero risultati - salvando risultati parziali]")
                 stop_event.set()
+                # Tenta di recuperare risultati parziali per salvare worker_cpu_times
+                partial_results = []
+                try:
+                    if async_res.ready():
+                        partial_results = async_res.get(timeout=0.1)
+                except:
+                    pass
+                # Estrai worker_cpu_times dai risultati parziali se disponibili
+                if partial_results:
+                    worker_cpu_times_partial = []
+                    for result in partial_results:
+                        if len(result) >= 4:
+                            worker_cpu_times_partial.append(result[3])
+                    if worker_cpu_times_partial:
+                        all_worker_cpu_times.append(worker_cpu_times_partial)
+                        print(f"Recuperati tempi CPU da {len(worker_cpu_times_partial)} worker completati")
                 try:
                     pool.terminate()
                     pool_already_terminated = True
@@ -1064,7 +1096,21 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                 raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
             except MemoryError:
                 print(f"\nMemoryError durante recupero risultati batch al livello {level}")
-                # NON tentare operazioni che richiedono memoria
+                # Tenta recupero MINIMO worker_cpu_times (operazione leggera)
+                try:
+                    if async_res.ready():
+                        partial_results = async_res.get(timeout=0.1)
+                        if partial_results:
+                            worker_cpu_times_partial = []
+                            for result in partial_results:
+                                if len(result) >= 4:
+                                    worker_cpu_times_partial.append(result[3])
+                            if worker_cpu_times_partial:
+                                all_worker_cpu_times.append(worker_cpu_times_partial)
+                                print(f"Recuperati tempi CPU da {len(worker_cpu_times_partial)} worker")
+                except:
+                    pass  # Se fallisce, ignora (memoria critica)
+                # NON tentare altre operazioni che richiedono memoria
                 try:
                     stop_event.set()
                 except:
@@ -1085,6 +1131,21 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                 raise MemoryError(f"Memoria esaurita durante recupero risultati al livello {level}")
             except KeyboardInterrupt:
                 print(f"\nInterruzione durante recupero risultati batch al livello {level}")
+                # Tenta recupero rapido worker_cpu_times
+                try:
+                    if async_res.ready():
+                        partial_results = async_res.get(timeout=0.1)
+                        if partial_results:
+                            worker_cpu_times_partial = []
+                            for result in partial_results:
+                                if len(result) >= 4:
+                                    worker_cpu_times_partial.append(result[3])
+                            if worker_cpu_times_partial:
+                                all_worker_cpu_times.append(worker_cpu_times_partial)
+                                print(f"Recuperati tempi CPU da {len(worker_cpu_times_partial)} worker")
+                except:
+                    pass  # Ignora errori per velocità
+                update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
                 # Skip terminate per velocità - salvataggio immediato
                 raise KeyboardInterrupt
             
