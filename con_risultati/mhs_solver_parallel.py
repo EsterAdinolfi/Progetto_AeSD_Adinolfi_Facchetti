@@ -715,7 +715,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                 if check_result['reason'] == 'timeout':
                     print(format_timeout_message(f"livello {level}", remaining_time=check_result['remaining_time']))
                     print("Interruzione preventiva per salvare risultati")
-                    raise create_state_exception(TimeoutError, found_mhs, level - 1, stats_per_level, mhs_per_level)
+                    raise TimeoutError((found_mhs, level - 1, stats_per_level, mhs_per_level, all_worker_cpu_times))
                 elif check_result['reason'] == 'memory':
                     print(f"\nUtilizzo memoria critico ({check_result['mem_percent']:.1f}%, solo {check_result['mem_avail_mb']:.1f}MB liberi)")
                     raise MemoryError(f"Utilizzo memoria troppo elevato: {check_result['mem_percent']:.1f}%")
@@ -764,7 +764,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     elapsed = time.time() - start_time
                     if elapsed >= timeout:
                         print(f"\nTimeout durante controllo MHS")
-                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
                 
                 # MAIN:9 - if CHECK(h) then
                 # CHECK:2-3 - verifica se vector(h) copre tutte le righe
@@ -851,7 +851,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     if remaining_time <= 1.0:
                         print(f"\n  Timeout imminente durante la creazione dei batch ({remaining_time:.1f}s rimanenti), interruzione")
                         update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
                 
                 end_idx = min(i + batch_size_local, num_hyp)
                 batches.append([h[0] for h in current_level[i:end_idx]])
@@ -876,7 +876,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     remaining_time = timeout - (time.time() - start_time) if timeout else float('inf')
                     if timeout and remaining_time <= 1.0:
                         print(f"\n  Timeout imminente durante la creazione dei batch ({remaining_time:.1f}s rimanenti), interruzione")
-                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
             
             batch_duration = time.time() - batch_start_time
             print(f"\n    {format_completion_message('Creazione batch', batch_duration, count=len(batches))}")
@@ -922,10 +922,10 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     print(f"\nInterruzione rilevata durante batch processing al livello {level}")
                     print("Terminazione immediata - salvando risultati parziali...")
                     stop_event.set()  
-                    safe_pool_terminate(pool, "interruzione batch")
                     # Salvataggio esplicito prima di sollevare l'eccezione
                     update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                    # NON aspettare pool.join() per terminazione immediata
+                    pool_already_terminated = True  # Segnala che non serve più terminare
+                    # NON terminare pool per velocità - terminazione posticipata nel finally
                     raise KeyboardInterrupt
                 if timeout:
                     elapsed = time.time() - start_time
@@ -935,11 +935,11 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                         print(f"\nTimeout imminente, interrompendo elaborazione al livello {level}")
                         print(f"Tempo trascorso: {elapsed:.1f}s, Rimanente: {remaining_timeout:.1f}s")
                         stop_event.set()  # Segnala ai worker di terminare immediatamente
-                        safe_pool_terminate(pool, "timeout polling")
                         # Salvataggio esplicito prima di sollevare l'eccezione
                         update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                        # NON aspettare pool.join() per terminazione immediata
-                        raise TimeoutError((found_mhs, level - 1, stats_per_level, mhs_per_level))
+                        pool_already_terminated = True  # Segnala che non serve più terminare
+                        # NON terminare pool per velocità - terminazione posticipata nel finally
+                        raise TimeoutError((found_mhs, level - 1, stats_per_level, mhs_per_level, all_worker_cpu_times))
                 
                 # Controllo memoria FREQUENTE (ogni 200ms) - separato dallo status update
                 # Questo è critico per prevenire che la memoria raggiunga il 100%
@@ -1028,7 +1028,8 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                         print(f"\nTimeout imminente ({remaining:.1f}s rimanenti), interruzione forzata...")
                         stop_event.set()
                         update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                        pool_already_terminated = True  # Segnala che non serve più terminare
+                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
                     
                     last_status = time.time()
             
@@ -1057,15 +1058,10 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     if worker_cpu_times_partial:
                         all_worker_cpu_times.append(worker_cpu_times_partial)
                         print(f"Recuperati tempi CPU da {len(worker_cpu_times_partial)} worker completati")
-                try:
-                    pool.terminate()
-                    pool_already_terminated = True
-                    pool.close()
-                except:
-                    pool_already_terminated = True
-                    pass  # Ignora errori durante terminate (Windows/Python 3.12)
+                # NON terminare pool - lasciare al finally per evitare blocchi
+                pool_already_terminated = True
                 update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
             except (AssertionError, OSError) as e:
                 print(f"\n[Errore interno multiprocessing durante recupero risultati - salvando risultati parziali]")
                 stop_event.set()
@@ -1085,15 +1081,10 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     if worker_cpu_times_partial:
                         all_worker_cpu_times.append(worker_cpu_times_partial)
                         print(f"Recuperati tempi CPU da {len(worker_cpu_times_partial)} worker completati")
-                try:
-                    pool.terminate()
-                    pool_already_terminated = True
-                    pool.close()
-                except:
-                    pool_already_terminated = True
-                    pass
+                # NON terminare pool - lasciare al finally per evitare blocchi
+                pool_already_terminated = True
                 update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
             except MemoryError:
                 print(f"\nMemoryError durante recupero risultati batch al livello {level}")
                 # Tenta recupero MINIMO worker_cpu_times (operazione leggera)
@@ -1115,11 +1106,8 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                     stop_event.set()
                 except:
                     pass
-                try:
-                    pool.terminate()  # Solo terminate, no close/join
-                    pool_already_terminated = True
-                except:
-                    pass
+                # NON terminare pool - lasciare al finally per evitare blocchi
+                pool_already_terminated = True
                 # Cleanup aggressivo
                 try:
                     del async_res
@@ -1146,7 +1134,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                 except:
                     pass  # Ignora errori per velocità
                 update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                # Skip terminate per velocità - salvataggio immediato
+                pool_already_terminated = True  # Segnala che non serve più terminare
                 raise KeyboardInterrupt
             
             # Controllo timeout modulare dopo aver ottenuto i risultati
@@ -1157,14 +1145,16 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                 # Skip terminate per terminazione immediata
                 # Salva lo stato attuale nei dati di emergenza
                 update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                pool_already_terminated = True
+                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
             
             remaining_time = timeout - (time.time() - start_time) if timeout else float('inf')
             if timeout and remaining_time <= 1.0:
                 print(f"\nTimeout imminente prima dell'elaborazione risultati ({remaining_time:.1f}s rimanenti), interruzione immediata")
                 stop_event.set()
                 update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                pool_already_terminated = True
+                raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
             
             found_mhs_dict = {frozenset(m): True for m, _ in found_mhs}
             new_mhs_count = 0
@@ -1213,7 +1203,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                                     new_mhs_count += 1
                         print(f"Salvati {new_mhs_count} nuovi MHS dai batch completati")
                         update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                        raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
                     
                     # MAIN:10 - APPEND(Delta, h) per MHS trovati dai worker
                     for cols, card in mhs_local:
@@ -1267,7 +1257,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                         if timeout and remaining_time <= 1.0:
                             print(f"\nTimeout durante deduplicazione incrementale bitset ({i+1}/{len(results)} batch, {remaining_time:.1f}s)")
                             update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                            raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                            raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
                         
                         # MAIN:10 - APPEND(Delta, h) per MHS trovati
                         for cols, card in mhs_local:
@@ -1307,7 +1297,7 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
                         if timeout and remaining_time <= 1.0:
                             print(f"\nTimeout durante raccolta risultati ({i+1}/{len(results)} batch, {remaining_time:.1f}s)")
                             update_emergency_data(get_emergency_data(), found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times)
-                            raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level))
+                            raise TimeoutError((found_mhs, level, stats_per_level, mhs_per_level, all_worker_cpu_times))
                         
                         # MAIN:10 - APPEND(Delta, h) per MHS trovati
                         for cols, card in mhs_local:
@@ -1379,17 +1369,23 @@ def mhs_solver_parallel(col_vectors, col_map, num_rows,
         # NON chiamare close/join se il pool è già stato terminato (evita blocco su Windows)
         if not pool_already_terminated:
             try:
-                timeout_reached, _ = check_timeout(timeout, start_time, margin=2.0)
+                timeout_reached, _ = check_timeout(timeout, start_time, margin=0.5)
                 if timeout_reached:
-                    safe_pool_terminate(pool, "timeout finale")
+                    # Terminazione IMMEDIATA senza cleanup - troppo lento su Windows
+                    try:
+                        pool.terminate()
+                    except:
+                        pass  # Ignora errori
                 else:
                     pool.close()
                     pool.join()
             except Exception:
-                safe_pool_terminate(pool, "exception cleanup")
-        else:
-            # Pool già terminato, niente da fare
-            pass
+                # Qualsiasi errore -> terminazione immediata
+                try:
+                    pool.terminate()
+                except:
+                    pass
+        # Pool già terminato, niente da fare
     # MAIN:22 - return Delta
     # Prima di restituire i risultati, gli MHS trovati vengono ordinati per
     # cardinalità (numero di colonne) per fornire un output leggibile e
@@ -1547,10 +1543,13 @@ def main(argv):
                 stats_per_level = e.args[0][2]
             if len(e.args[0]) >= 4:
                 mhs_per_level = e.args[0][3]
-            # Recupera anche i tempi CPU dei worker dai dati di emergenza
-            emergency_data_obj = get_emergency_data()
-            if 'worker_cpu_times' in emergency_data_obj and emergency_data_obj['worker_cpu_times']:
-                worker_cpu_times = emergency_data_obj['worker_cpu_times']
+            if len(e.args[0]) >= 5:
+                worker_cpu_times = e.args[0][4]
+            else:
+                # Recupera anche i tempi CPU dei worker dai dati di emergenza se non nella tupla
+                emergency_data_obj = get_emergency_data()
+                if 'worker_cpu_times' in emergency_data_obj and emergency_data_obj['worker_cpu_times']:
+                    worker_cpu_times = emergency_data_obj['worker_cpu_times']
             print(f"Recuperati {len(found_mhs)} MHS parziali dal timeout.")
     except MemoryError:
         print(f"MEMORIA INSUFFICIENTE.")

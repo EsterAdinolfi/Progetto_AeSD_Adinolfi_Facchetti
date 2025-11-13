@@ -1022,7 +1022,7 @@ def extract_state_from_exception(exception, default_state):
     return default_state
 
 
-def create_state_exception(exception_type, found_mhs, level, stats_per_level, mhs_per_level):
+def create_state_exception(exception_type, found_mhs, level, stats_per_level, mhs_per_level, worker_cpu_times=None):
     """
     Crea un'eccezione che contiene lo stato corrente dell'algoritmo.
     
@@ -1035,11 +1035,15 @@ def create_state_exception(exception_type, found_mhs, level, stats_per_level, mh
         level: livello corrente
         stats_per_level: statistiche per livello
         mhs_per_level: MHS per livello
+        worker_cpu_times: tempi CPU dei worker (opzionale)
         
     Returns:
         Eccezione con lo stato embedded negli args
     """
-    state = create_emergency_state(found_mhs, level, stats_per_level, mhs_per_level)
+    if worker_cpu_times is not None:
+        state = (found_mhs, level, stats_per_level, mhs_per_level, worker_cpu_times)
+    else:
+        state = (found_mhs, level, stats_per_level, mhs_per_level)
     exc = exception_type(state)
     exc.args = (state,)
     return exc
@@ -1241,37 +1245,43 @@ def write_mhs_output(out_path: str, found_mhs: List[Tuple[List[int], int]],
             out.write(f";;;   Tempo reale = {perf['tempo_reale']:.4f} s\n")
             out.write(f";;;   CPU time totale = {perf['tempo_cpu']:.4f} s\n")
             
-            # Dettagli tempi CPU per solver parallelo
-            if perf.get('num_worker', 0) > 0:  # Scrivi se ci sono worker (anche se tempo è 0)
-                out.write(f";;;     CPU time master = {perf['tempo_cpu_master']:.4f} s\n")
-                out.write(f";;;     CPU time worker (totale) = {perf['tempo_cpu_worker_totale']:.4f} s\n")
-                out.write(f";;;     CPU time worker (max) = {perf['tempo_cpu_worker_max']:.4f} s\n")
-                out.write(f";;;     CPU time worker (media) = {perf['tempo_cpu_worker_media']:.4f} s\n")
-                out.write(f";;;     Numero worker = {perf['num_worker']}\n")
-                
-                # Formatta worker times per livello
-                worker_times_per_level = perf['worker_cpu_times_list']
-                if worker_times_per_level and isinstance(worker_times_per_level, list):
-                    # Check se è lista di liste (per livello) o lista piatta (vecchio formato)
-                    if worker_times_per_level and isinstance(worker_times_per_level[0], list):
-                        # Nuovo formato: lista di liste per livello
-                        out.write(f";;;     CPU time singoli worker per livello:\n")
-                        for level_idx, level_times in enumerate(worker_times_per_level):
-                            if level_times:  # Solo se ci sono worker in questo livello
-                                times_str = ", ".join(f"{t:.4f}" for t in level_times)
-                                out.write(f";;;       Livello {level_idx}: [{times_str}] s\n")
-                    else:
-                        # Vecchio formato: lista piatta (backward compatibility)
-                        out.write(f";;;     CPU time singoli worker = [\n")
-                        for i in range(0, len(worker_times_per_level), 10):
-                            chunk = worker_times_per_level[i:i+10]
-                            chunk_str = ", ".join(f"{t:.4f}" for t in chunk)
-                            out.write(f";;;       {chunk_str}")
-                            if i + 10 < len(worker_times_per_level):
-                                out.write(",\n")
-                            else:
-                                out.write("\n")
-                        out.write(f";;;     ] s\n")
+            # Dettagli tempi CPU per solver parallelo o seriale
+            if perf.get('is_parallel', False):
+                # Solver parallelo
+                if perf.get('num_worker', 0) > 0:
+                    # Batch completati - mostra statistiche worker
+                    out.write(f";;;     CPU time master = {perf['tempo_cpu_master']:.4f} s\n")
+                    out.write(f";;;     CPU time worker (totale) = {perf['tempo_cpu_worker_totale']:.4f} s\n")
+                    out.write(f";;;     CPU time worker (max) = {perf['tempo_cpu_worker_max']:.4f} s\n")
+                    out.write(f";;;     CPU time worker (media) = {perf['tempo_cpu_worker_media']:.4f} s\n")
+                    out.write(f";;;     Numero worker = {perf['num_worker']}\n")
+                    
+                    # Formatta worker times per livello
+                    worker_times_per_level = perf['worker_cpu_times_list']
+                    if worker_times_per_level and isinstance(worker_times_per_level, list):
+                        # Check se è lista di liste (per livello) o lista piatta (vecchio formato)
+                        if isinstance(worker_times_per_level[0], list):
+                            # Nuovo formato: lista di liste per livello
+                            out.write(f";;;     CPU time singoli worker per livello:\n")
+                            for level_idx, level_times in enumerate(worker_times_per_level):
+                                if level_times:  # Solo se ci sono worker in questo livello
+                                    times_str = ", ".join(f"{t:.4f}" for t in level_times)
+                                    out.write(f";;;       Livello {level_idx}: [{times_str}] s\n")
+                        else:
+                            # Vecchio formato: lista piatta (backward compatibility)
+                            out.write(f";;;     CPU time singoli worker = [\n")
+                            for i in range(0, len(worker_times_per_level), 10):
+                                chunk = worker_times_per_level[i:i+10]
+                                chunk_str = ", ".join(f"{t:.4f}" for t in chunk)
+                                out.write(f";;;       {chunk_str}")
+                                if i + 10 < len(worker_times_per_level):
+                                    out.write(",\n")
+                                else:
+                                    out.write("\n")
+                            out.write(f";;;     ] s\n")
+                else:
+                    # Solver parallelo ma nessun batch completato (interruzione precoce)
+                    out.write(f";;;     CPU time singoli worker: nessun batch completato (interruzione precoce)\n")
             else:
                 # Versione seriale: nessun worker
                 out.write(f";;;     CPU time singoli worker: non presente (esecuzione seriale)\n")
@@ -1316,6 +1326,7 @@ def measure_performance(start_wall, start_cpu, worker_cpu_times=None):
         peak = None
     
     # Calcolo tempi CPU per solver parallelo
+    is_parallel = worker_cpu_times is not None  # True se è stato chiamato solver parallelo
     if worker_cpu_times and len(worker_cpu_times) > 0:
         # worker_cpu_times è una lista di liste (una per livello)
         # Appiattisci la struttura per ottenere tutti i tempi worker
@@ -1341,7 +1352,7 @@ def measure_performance(start_wall, start_cpu, worker_cpu_times=None):
         # (rappresenta il tempo CPU totale utilizzato da tutti i processi)
         tempo_cpu_effettivo = elapsed_cpu_master + worker_cpu_total
     else:
-        # Solver seriale: solo il tempo CPU del master
+        # Nessun worker completato (o solver seriale)
         worker_cpu_total = 0
         worker_cpu_max = 0
         worker_cpu_media = 0
@@ -1356,6 +1367,7 @@ def measure_performance(start_wall, start_cpu, worker_cpu_times=None):
         "tempo_cpu_worker_max": worker_cpu_max,  # Max tra i worker
         "tempo_cpu_worker_media": worker_cpu_media,  # Media dei worker
         "num_worker": num_worker,  # Numero di worker
+        "is_parallel": is_parallel,  # True se solver parallelo, False se seriale
         "worker_cpu_times_list": worker_cpu_times if worker_cpu_times else [],  # LISTA COMPLETA dei tempi
         "mem_rss": mem_rss,
         "mem_picco": peak
