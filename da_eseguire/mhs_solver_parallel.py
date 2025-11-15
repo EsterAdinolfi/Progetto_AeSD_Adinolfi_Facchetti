@@ -209,7 +209,7 @@ def worker_process_batch_bins(args):
     worker_cpu_time = time.process_time() - worker_start_cpu
     return children_tuples, mhs_local, False, worker_cpu_time
 
-
+# non usata
 def dedup_bitset(all_children, seen_bitset, num_cols, timeout=None, start_time=None, dedup_start_time=None, memory_limit_percent=100):
     """
     Deduplicazione figli usando bitset (per livelli piccoli/medi).
